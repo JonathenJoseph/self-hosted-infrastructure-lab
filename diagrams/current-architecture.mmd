@@ -1,0 +1,69 @@
+flowchart TB
+    CLIENT["Home-network client / browser"]
+
+    subgraph HOST["HP Elite Mini 800 G9 · Windows 11 host"]
+        FW["Windows Defender Firewall\nDefault inbound: Block"]
+        subgraph WSL["WSL 2"]
+            UBUNTU["Ubuntu\nDocker CLI client"]
+        end
+        subgraph DOCKER["Docker Desktop · Linux Docker Engine"]
+    CADDY["Caddy reverse proxy"]
+            subgraph APPGROUPS["Application containers"]
+                WEB["Apprenticeship Tracker web"]
+                HA["Home Assistant"]
+                JELLY["Jellyfin"]
+                HOME["Homepage"]
+                IMMICH["Immich server"]
+                PG["Immich PostgreSQL"]
+                ML["Immich machine learning"]
+                VALKEY["Valkey"]
+                SEARCH["SearXNG"]
+                VERT["Vert"]
+                WEBUI["Open WebUI"]
+                API["Apprenticeship Tracker API"]
+                PI["Pi-hole DNS service"]
+                UNBOUND["Unbound\nHost UDP 5335"]
+    TWIN["Twingate Connector"]
+            end
+        end
+    end
+
+    CLIENT -->|HTTP 80 / HTTPS 443| FW
+    FW --> CADDY
+    UBUNTU -. same Docker daemon .-> DOCKER
+
+    CADDY -->|Docker DNS · web:80| WEB
+    CADDY -->|Docker DNS · homeassistant:8123| HA
+    CADDY -->|host gateway · :3001| HOME
+    CADDY -->|host gateway · :8096| JELLY
+    CADDY -->|host gateway · :2283| IMMICH
+    CADDY -->|host gateway · :8080| SEARCH
+    CADDY -->|host gateway · :3005| VERT
+    CADDY -->|host gateway · :3000| WEBUI
+    CADDY -. unresolved · :8088 .-> KALI["Kali route target\nnot identified"]
+
+    IMMICH --> PG
+    IMMICH --> ML
+    IMMICH --> VALKEY
+
+    subgraph STORAGE["Persistent storage"]
+    HOSTDATA["Host storage (mount details omitted)"]
+        VOLUMES["Docker named volumes\nImmich model cache · Open WebUI · Caddy state"]
+        EXTERNAL["External Seagate USB · NTFS\nRestic repository: 0 completed snapshots\nIntegrity check passed; backup unverified"]
+    end
+    %% Historical host-mount relationship omitted
+    %% Historical host-mount relationship omitted
+    VOLUMES -. Immich model cache .-> ML
+    VOLUMES -. Open WebUI data .-> WEBUI
+    VOLUMES -. Caddy data and config .-> CADDY
+    %% Historical host-mount relationship omitted
+    %% Historical host-mount relationship omitted
+    %% Historical host-mount relationship omitted
+    IMMICH -. attempted backup · failed; no snapshot .-> EXTERNAL
+
+    PI -. configured upstream .-> PUBLICDNS["Public DNS upstreams"]
+    UNBOUND_NOTE["Unbound is running separately; Pi-hole is not configured to use it"]
+    PI --- UNBOUND_NOTE
+
+    classDef unresolved stroke-dasharray: 5 5;
+    class KALI,EXTERNAL unresolved;

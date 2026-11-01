@@ -1,0 +1,44 @@
+flowchart LR
+    N_CADDY["[DOCKER_NETWORK_1]"]
+    N_IMMICH["[DOCKER_NETWORK_2]"]
+    N_APP["[DOCKER_NETWORK_3]"]
+    N_HOME["[DOCKER_NETWORK_4]"]
+    N_BRIDGE["bridge"]
+    N_PI["[DOCKER_NETWORK_5]"]
+    N_HOST["Network mode details omitted"]
+
+    CADDY["caddy"]
+    WEB["[CONTAINER_ROLE_WEB]"]
+    API["[CONTAINER_ROLE_API]"]
+    HA["homeassistant"]
+    JELLY["jellyfin"]
+    IMMICH["[CONTAINER_ROLE_IMMICH]"]
+    PG["[CONTAINER_ROLE_DATABASE]"]
+    ML["[CONTAINER_ROLE_PROCESSOR]"]
+    VALKEY["[CONTAINER_ROLE_CACHE] / Valkey"]
+    HOME["homepage"]
+    SEARCH["searxng"]
+    WEBUI["open-webui"]
+    PIHOLE["pihole"]
+    UNBOUND["unbound"]
+    TWINGATE["twingate connector"]
+    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted    %% Historical container-to-network membership omitted
+    %% Historical container-to-network membership omitted
+    classDef network fill:#eaf2ff,stroke:#4776b8,color:#17365d;
+    classDef service fill:#f5f5f5,stroke:#666,color:#222;
+    class N_CADDY,N_IMMICH,N_APP,N_HOME,N_BRIDGE,N_PI,N_HOST network;
+    class CADDY,WEB,API,HA,JELLY,IMMICH,PG,ML,VALKEY,HOME,SEARCH,WEBUI,PIHOLE,UNBOUND,TWINGATE service;

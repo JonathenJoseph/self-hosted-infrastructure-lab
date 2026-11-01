@@ -8,12 +8,12 @@ This file tracks evidence-backed documentation and reliability tasks. It is not 
 
 | Item | Evidence | Required outcome | Status |
 |---|---|---|---|
-| Immich Restic backup | Dry run passed; first full write failed with Disk 153 / Disk 51 / NTFS 50 errors. Repository check passed but listed zero snapshots | Stabilise/test external storage, complete snapshot, verify contents and test restore | Blocked / open |
-| Immich PostgreSQL dump | Gzip integrity passed; database restore not tested | Restore dump in isolated PostgreSQL instance | Open |
+| Immich Restic backup | Initial full backup completed; snapshot `7ec7a616` saved; 48,335 files and 197.721 GiB processed | Run a post-backup integrity check, inspect snapshot contents and test restoration | Snapshot completed; verification open |
+| Immich PostgreSQL dump | Gzip integrity passed; database restore not tested | Restore dump in an isolated PostgreSQL instance | Open |
+| Immich recovery procedure | Initial Restic snapshot exists; no complete recovery drill performed | Restore sample files and test the application recovery sequence | Open |
+| External storage reliability | First full write attempt produced Disk 153, Disk 51 and NTFS 50 errors; a subsequent full backup succeeded | Monitor subsequent backup runs and investigate any recurrence | Initial retry successful; cause unresolved |
 | Pi-hole state | No mounts; important files appear in writable container layer | Export Teleporter backup and verify recovery path | Open |
-| Pi-hole deployment definition | Active Pi-hole has no Compose labels; referenced Compose file absent | Reconstruct/locate definition only after state export | Open |
-
-| Seagate external storage | Windows later reported disk Online / Healthy and CHKDSK found no filesystem problems; intermittent I/O failure remains unresolved | Investigate USB path and sustained write reliability before relying on the device | Open |
+| Pi-hole deployment definition | Active Pi-hole has no Compose labels; referenced Compose file absent | Reconstruct or locate definition only after state export | Open |
 
 ## Priority 1: reproducible deployment documentation
 
@@ -43,4 +43,7 @@ This file tracks evidence-backed documentation and reliability tasks. It is not 
 - Nextcloud containers were absent; four Nextcloud-named Docker volumes were removed at the user's explicit request. The corresponding volume-name filter returned no remaining matches.
 - Immich proxy 502 errors recorded during the Caddy log review were explained by the user as expected errors during intentional Immich maintenance. Immich was subsequently reported back online.
 - Caddy configuration validation passed.
-- Restic repository integrity check passed after the failed full-backup attempt; zero completed snapshots were present.
+- The initial Immich Restic backup completed successfully and saved snapshot `7ec7a616`.
+- The successful Restic run processed 48,335 files and 197.721 GiB, storing 135.725 GiB in the repository.
+- The earlier failed Restic write attempt was investigated using Windows Disk and NTFS event logs. A subsequent full backup succeeded, although the original I/O interruption's cause remains unresolved.
+- Twingate remote access to any service on the home network was confirmed by the operator.

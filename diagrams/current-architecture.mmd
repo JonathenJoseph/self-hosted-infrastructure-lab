@@ -1,5 +1,15 @@
 flowchart TB
-    CLIENT["Home-network client / browser"]
+    subgraph REMOTE["Outside the home network"]
+        USER_REMOTE["Remote device"]
+        TW_CLIENT["Twingate client\nPrivate-resource access"]
+        WIFI["WiFiman app / desktop\nUniFi Teleport VPN"]
+    end
+
+    subgraph HOME["Home network · UniFi"]
+        UGW["UniFi Gateway\nLocal DNS records / hostnames\nLAN routing and firewall\nTeleport VPN endpoint"]
+        LANCLIENT["Home-network clients"]
+        SWITCH["UniFi switch / access points"]
+    end
 
     subgraph HOST["HP Elite Mini 800 G9 · Windows 11 host"]
         FW["Windows Defender Firewall\nDefault inbound: Block"]
@@ -8,6 +18,7 @@ flowchart TB
         end
         subgraph DOCKER["Docker Desktop · Linux Docker Engine"]
     CADDY["Caddy reverse proxy"]
+    TWIN["Twingate Connector"]
             subgraph APPGROUPS["Application containers"]
                 WEB["Apprenticeship Tracker web"]
                 HA["Home Assistant"]
@@ -23,15 +34,31 @@ flowchart TB
                 API["Apprenticeship Tracker API"]
                 PI["Pi-hole DNS service"]
                 UNBOUND["Unbound\nHost UDP 5335"]
-    TWIN["Twingate Connector"]
             end
         end
     end
 
-    CLIENT -->|HTTP 80 / HTTPS 443| FW
+    %% Local name resolution is handled by the UniFi gateway.
+    LANCLIENT -->|DNS query for local hostname| UGW
+    UGW -.->|DNS answer: local hostname resolves to host LAN address| LANCLIENT
+
+    %% Local application traffic reaches the host; Caddy handles HTTP(S) reverse proxying.
+    LANCLIENT --> SWITCH
+    SWITCH -->|HTTP 80 / HTTPS 443 to resolved host address| FW
     FW --> CADDY
+
+    %% Remote access uses either of these independent paths.
+    USER_REMOTE --> TW_CLIENT
+    TW_CLIENT -->|Twingate private-resource connection| TWIN
+    TWIN -->|Authorised private resources\n(exact resource list not captured)| FW
+
+    USER_REMOTE --> WIFI
+    WIFI -->|Teleport VPN connection| UGW
+    UGW -->|VPN-authorised access to home network| FW
+
     UBUNTU -. same Docker daemon .-> DOCKER
 
+    %% Caddy application routing observed in the current configuration.
     CADDY -->|Docker DNS · web:80| WEB
     CADDY -->|Docker DNS · homeassistant:8123| HA
     CADDY -->|host gateway · :3001| HOME

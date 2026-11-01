@@ -2,7 +2,7 @@
 
 **Snapshot date:** 1 November 2026  
 **Platform:** Windows 11 host, Docker Desktop, WSL 2 backend  
-**Assessment mode:** read-only discovery
+**Assessment mode:** Primarily read-only discovery, with separately documented backup activity
 
 ## Host baseline
 
@@ -26,7 +26,6 @@ The machine has ample CPU capability for the observed workload. Capacity plannin
 
 The Windows Docker CLI and the Docker CLI inside Ubuntu WSL were both observed to communicate with the same Docker Desktop daemon. The Docker server ID matched in both environments. Ubuntu WSL is therefore a client/workspace for the same engine, not a second independent Docker host.
 
-
 ## Container estate summary
 
 The current inventory snapshot records 16 running containers within the scope of this portfolio. See [Container Inventory](container-inventory.md) for the documented services and their observed configuration.
@@ -43,9 +42,19 @@ The in-scope workloads include:
 - AI web interface: Open WebUI
 - Apprenticeship Tracker: web and API containers
 - DNS: Pi-hole and Unbound
-- Remote access connector: Twingate
+- Remote access: Twingate Connector
 
-See [Container Inventory](container-inventory.md) for per-container detail.
+## Network and remote-access summary
+
+| Function | Component | Current documented role |
+|---|---|---|
+| Local DNS | UniFi Gateway | Resolves local hostnames for home-network clients |
+| LAN routing | UniFi Gateway | Routes traffic within the home network |
+| HTTP/HTTPS reverse proxy | Caddy | Routes web requests to configured application upstreams |
+| Remote private access | Twingate | User-confirmed access to any service on the home network |
+| Remote VPN access | UniFi Teleport through WiFiman | Independent VPN option for connecting back to the home network |
+
+Twingate and UniFi Teleport are separate remote-access methods. They do not need to be active together.
 
 ## Deployment management
 
@@ -64,6 +73,28 @@ This does not prove these containers were created manually, but their current Co
 
 The Pi-hole/Unbound deployment has an additional inconsistency: Unbound metadata references a Compose file under the Pi-hole directory, but that Compose file was not present when checked. The active Pi-hole container itself had no Compose labels.
 
+## Data protection status
+
+The initial full Restic backup of the configured Immich data selection completed successfully on 1 November 2026.
+
+| Metric | Result |
+|---|---:|
+| Repository ID prefix | `[PRIVATE_RESTIC_REPOSITORY_IDENTIFIER]` |
+| Snapshot ID | `7ec7a616` |
+| Files processed | 48,335 |
+| Data scanned | 197.721 GiB |
+| Data added to repository | 136.272 GiB |
+| Data stored | 135.725 GiB |
+| Duration | 3 hours, 47 minutes, 13 seconds |
+| VSS snapshot for `C:\` | Successful |
+| Restic exit code | `0` |
+
+An earlier write attempt failed with external storage I/O errors. A subsequent full run completed successfully. The cause of the original interruption remains unresolved.
+
+The next data-protection tasks are a post-backup repository integrity check, snapshot-content inspection, sample file restoration and an isolated PostgreSQL restore test. A complete Immich recovery drill has not yet been performed.
+
+See [Backup and Recovery](backup-and-recovery.md) and the [Immich backup case study](case-studies/immich-backup-incident.md).
+
 ## Operating principles for this documentation
 
 1. Treat command output as evidence, not as permission to change configuration.
@@ -71,3 +102,4 @@ The Pi-hole/Unbound deployment has an additional inconsistency: Unbound metadata
 3. Do not publish secrets or certificate private keys.
 4. Do not prune unused images or volumes until ownership and recovery requirements are understood.
 5. Keep point-in-time observations dated and refresh them before operational decisions.
+6. Distinguish a successful backup from a tested recovery procedure.

@@ -1,29 +1,30 @@
 flowchart TB
-    subgraph REMOTE["Outside the home network"]
-        USER_REMOTE["Remote device"]
-        TW_CLIENT["Twingate client\nPrivate-resource access"]
-        WIFI["WiFiman app / desktop\nUniFi Teleport VPN"]
+    subgraph REMOTE["Remote access outside the home"]
+        REMOTE_DEVICE["Remote device"]
+        TW_CLIENT["Twingate client"]
+        WIFI_CLIENT["WiFiman client - Teleport VPN"]
     end
 
-    subgraph HOME["Home network · UniFi"]
-        UGW["UniFi Gateway\nLocal DNS records / hostnames\nLAN routing and firewall\nTeleport VPN endpoint"]
-        LANCLIENT["Home-network clients"]
-        SWITCH["UniFi switch / access points"]
+    subgraph HOME_NET["Home network - UniFi"]
+        UGW["UniFi Gateway - local DNS and LAN routing"]
+        LAN_CLIENT["Home network clients"]
+        SWITCH["UniFi switch and access points"]
+        TW_RESOURCES["Twingate authorised resources - exact list not documented"]
     end
 
-    subgraph HOST["HP Elite Mini 800 G9 · Windows 11 host"]
-        FW["Windows Defender Firewall\nDefault inbound: Block"]
+    subgraph HOST["HP Elite Mini 800 G9 - Windows 11 host"]
+        FW["Windows Defender Firewall"]
         subgraph WSL["WSL 2"]
-            UBUNTU["Ubuntu\nDocker CLI client"]
+            UBUNTU["Ubuntu - Docker CLI client"]
         end
-        subgraph DOCKER["Docker Desktop · Linux Docker Engine"]
+        subgraph DOCKER["Docker Desktop - Linux Docker Engine"]
     CADDY["Caddy reverse proxy"]
     TWIN["Twingate Connector"]
             subgraph APPGROUPS["Application containers"]
                 WEB["Apprenticeship Tracker web"]
                 HA["Home Assistant"]
                 JELLY["Jellyfin"]
-                HOME["Homepage"]
+                HOMEPAGE["Homepage"]
                 IMMICH["Immich server"]
                 PG["Immich PostgreSQL"]
                 ML["Immich machine learning"]
@@ -31,66 +32,64 @@ flowchart TB
                 SEARCH["SearXNG"]
                 VERT["Vert"]
                 WEBUI["Open WebUI"]
-                API["Apprenticeship Tracker API"]
+                API["Apprenticeship Tracker API - host port 4000"]
                 PI["Pi-hole DNS service"]
-                UNBOUND["Unbound\nHost UDP 5335"]
+                UNBOUND["Unbound - host UDP port 5335"]
+                KALI["Kali route target - not identified"]
             end
         end
     end
 
-    %% Local name resolution is handled by the UniFi gateway.
-    LANCLIENT -->|DNS query for local hostname| UGW
-    UGW -.->|DNS answer: local hostname resolves to host LAN address| LANCLIENT
-
-    %% Local application traffic reaches the host; Caddy handles HTTP(S) reverse proxying.
-    LANCLIENT --> SWITCH
-    SWITCH -->|HTTP 80 / HTTPS 443 to resolved host address| FW
+    %% UniFi resolves local names; Caddy handles HTTP and HTTPS application routing.
+    LAN_CLIENT -->|DNS query for local hostname| UGW
+    UGW -.->|Local DNS answer points to host LAN address| LAN_CLIENT
+    LAN_CLIENT --> SWITCH
+    SWITCH -->|HTTP or HTTPS request to host address| FW
     FW --> CADDY
 
-    %% Remote access uses either of these independent paths.
-    USER_REMOTE --> TW_CLIENT
-    TW_CLIENT -->|Twingate private-resource connection| TWIN
-    TWIN -->|Authorised private resources\n(exact resource list not captured)| FW
+    %% Remote access paths are independent. Resource-level Twingate rules were not captured.
+    REMOTE_DEVICE --> TW_CLIENT
+    TW_CLIENT -->|Private access connection| TWIN
+    TWIN -.->|Resource access depends on Twingate policy| TW_RESOURCES
 
-    USER_REMOTE --> WIFI
-    WIFI -->|Teleport VPN connection| UGW
-    UGW -->|VPN-authorised access to home network| FW
+    REMOTE_DEVICE --> WIFI_CLIENT
+    WIFI_CLIENT -->|Teleport VPN connection| UGW
+    UGW -->|Permitted access to home network| FW
 
-    UBUNTU -. same Docker daemon .-> DOCKER
+    UBUNTU -.->|Uses the same Docker daemon| DOCKER
 
-    %% Caddy application routing observed in the current configuration.
-    CADDY -->|Docker DNS · web:80| WEB
-    CADDY -->|Docker DNS · homeassistant:8123| HA
-    CADDY -->|host gateway · :3001| HOME
-    CADDY -->|host gateway · :8096| JELLY
-    CADDY -->|host gateway · :2283| IMMICH
-    CADDY -->|host gateway · :8080| SEARCH
-    CADDY -->|host gateway · :3005| VERT
-    CADDY -->|host gateway · :3000| WEBUI
-    CADDY -. unresolved · :8088 .-> KALI["Kali route target\nnot identified"]
-
+    %% Caddy upstreams observed in the current configuration.
+    %% Historical Caddy upstream and port mapping omitted
+    %% Historical Caddy upstream and port mapping omitted
+    %% Historical Caddy upstream and port mapping omitted
+    %% Historical Caddy upstream and port mapping omitted
+    %% Historical Caddy upstream and port mapping omitted
+    %% Historical Caddy upstream and port mapping omitted
+    %% Historical Caddy upstream and port mapping omitted
+    %% Historical Caddy upstream and port mapping omitted
+    %% Historical Caddy upstream and port mapping omitted
     IMMICH --> PG
     IMMICH --> ML
     IMMICH --> VALKEY
 
     subgraph STORAGE["Persistent storage"]
     HOSTDATA["Host storage (mount details omitted)"]
-        VOLUMES["Docker named volumes\nImmich model cache · Open WebUI · Caddy state"]
-        EXTERNAL["External Seagate USB · NTFS\nRestic repository: 0 completed snapshots\nIntegrity check passed; backup unverified"]
+        VOLUMES["Docker named volumes - model cache and application state"]
+        EXTERNAL["External Seagate USB drive - Restic repository has zero completed snapshots"]
     end
-    %% Historical host-mount relationship omitted
-    %% Historical host-mount relationship omitted
-    VOLUMES -. Immich model cache .-> ML
-    VOLUMES -. Open WebUI data .-> WEBUI
-    VOLUMES -. Caddy data and config .-> CADDY
-    %% Historical host-mount relationship omitted
-    %% Historical host-mount relationship omitted
-    %% Historical host-mount relationship omitted
-    IMMICH -. attempted backup · failed; no snapshot .-> EXTERNAL
 
-    PI -. configured upstream .-> PUBLICDNS["Public DNS upstreams"]
-    UNBOUND_NOTE["Unbound is running separately; Pi-hole is not configured to use it"]
-    PI --- UNBOUND_NOTE
+    HOSTDATA -.->|Bind mounts| IMMICH
+    %% Historical host-mount relationship omitted
+    VOLUMES -.->|Model cache| ML
+    VOLUMES -.->|Application data| WEBUI
+    VOLUMES -.->|Caddy configuration and state| CADDY
+    %% Historical host-mount relationship omitted
+    HOSTDATA -.->|Configuration| HA
+    %% Historical host-mount relationship omitted
+    IMMICH -.->|Backup attempt failed - no snapshot| EXTERNAL
+
+    PI -.->|Configured upstreams| PUBLIC_DNS["Public DNS upstreams"]
+    PI --- UNBOUND_NOTE["Unbound is running separately and is not configured as Pi-hole upstream"]
 
     classDef unresolved stroke-dasharray: 5 5;
-    class KALI,EXTERNAL unresolved;
+    class KALI,EXTERNAL,TW_RESOURCES unresolved;

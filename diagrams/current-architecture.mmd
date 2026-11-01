@@ -9,14 +9,16 @@ flowchart TB
         UGW["UniFi Gateway - local DNS and LAN routing"]
         LAN_CLIENT["Home network clients"]
         SWITCH["UniFi switch and access points"]
-        TW_RESOURCES["Twingate authorised resources - exact list not documented"]
+        HOME_SERVICES["Any service on the home network"]
     end
 
     subgraph HOST["HP Elite Mini 800 G9 - Windows 11 host"]
         FW["Windows Defender Firewall"]
+
         subgraph WSL["WSL 2"]
             UBUNTU["Ubuntu - Docker CLI client"]
         end
+
         subgraph DOCKER["Docker Desktop - Linux Docker Engine"]
     CADDY["Caddy reverse proxy"]
     TWIN["Twingate Connector"]
@@ -32,33 +34,34 @@ flowchart TB
                 SEARCH["SearXNG"]
                 VERT["Vert"]
                 WEBUI["Open WebUI"]
-                API["Apprenticeship Tracker API - host port 4000"]
-                PI["Pi-hole DNS service"]
-                UNBOUND["Unbound - host UDP port 5335"]
-                KALI["Kali route target - not identified"]
+                API["Apprenticeship Tracker API"]
+                PI["Pi-hole"]
+                UNBOUND["Unbound"]
+                KALI["Kali route target - unresolved"]
             end
         end
     end
 
-    %% UniFi resolves local names; Caddy handles HTTP and HTTPS application routing.
-    LAN_CLIENT -->|DNS query for local hostname| UGW
-    UGW -.->|Local DNS answer points to host LAN address| LAN_CLIENT
+    %% Local DNS resolution and web application routing.
+    LAN_CLIENT -->|Local DNS query| UGW
+    UGW -.->|Local hostname resolves to host LAN address| LAN_CLIENT
     LAN_CLIENT --> SWITCH
-    SWITCH -->|HTTP or HTTPS request to host address| FW
+    SWITCH -->|HTTP or HTTPS request| FW
     FW --> CADDY
 
-    %% Remote access paths are independent. Resource-level Twingate rules were not captured.
+    %% Twingate and UniFi Teleport are independent remote-access options.
     REMOTE_DEVICE --> TW_CLIENT
     TW_CLIENT -->|Private access connection| TWIN
-    TWIN -.->|Resource access depends on Twingate policy| TW_RESOURCES
+    TWIN -->|User-confirmed access to any home-network service| HOME_SERVICES
 
     REMOTE_DEVICE --> WIFI_CLIENT
     WIFI_CLIENT -->|Teleport VPN connection| UGW
-    UGW -->|Permitted access to home network| FW
+    UGW -->|Permitted VPN access| FW
 
-    UBUNTU -.->|Uses the same Docker daemon| DOCKER
+    %% Ubuntu WSL uses the same Docker Desktop daemon.
+    UBUNTU -.->|Docker CLI uses same daemon| DOCKER
 
-    %% Caddy upstreams observed in the current configuration.
+    %% Caddy upstreams observed in configuration.
     %% Historical Caddy upstream and port mapping omitted
     %% Historical Caddy upstream and port mapping omitted
     %% Historical Caddy upstream and port mapping omitted
@@ -74,22 +77,25 @@ flowchart TB
 
     subgraph STORAGE["Persistent storage"]
     HOSTDATA["Host storage (mount details omitted)"]
-        VOLUMES["Docker named volumes - model cache and application state"]
-        EXTERNAL["External Seagate USB drive - Restic repository has zero completed snapshots"]
+        VOLUMES["Docker named volumes"]
+        RESTIC["External encrypted Restic repository"]
+        SNAPSHOT["Successful initial snapshot 7ec7a616"]
     end
-
-    HOSTDATA -.->|Bind mounts| IMMICH
+    %% Historical host-mount relationship omitted
     %% Historical host-mount relationship omitted
     VOLUMES -.->|Model cache| ML
     VOLUMES -.->|Application data| WEBUI
-    VOLUMES -.->|Caddy configuration and state| CADDY
+    VOLUMES -.->|Caddy state| CADDY
     %% Historical host-mount relationship omitted
-    HOSTDATA -.->|Configuration| HA
     %% Historical host-mount relationship omitted
-    IMMICH -.->|Backup attempt failed - no snapshot| EXTERNAL
+    %% Historical host-mount relationship omitted
+
+    IMMICH -->|Initial backup completed successfully| RESTIC
+    RESTIC -->|48,335 files - 197.721 GiB scanned| SNAPSHOT
+    SNAPSHOT -.->|Restore test outstanding| RESTORE["Recovery verification"]
 
     PI -.->|Configured upstreams| PUBLIC_DNS["Public DNS upstreams"]
-    PI --- UNBOUND_NOTE["Unbound is running separately and is not configured as Pi-hole upstream"]
+    PI --- UNBOUND_NOTE["Unbound runs separately and is not configured as Pi-hole upstream"]
 
-    classDef unresolved stroke-dasharray: 5 5;
-    class KALI,EXTERNAL,TW_RESOURCES unresolved;
+    classDef pending stroke-dasharray: 5 5;
+    class KALI,RESTORE pending;

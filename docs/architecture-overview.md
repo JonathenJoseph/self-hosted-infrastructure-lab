@@ -1,253 +1,220 @@
 # Architecture Overview
 
-**Snapshot date:** 1 November 2026  
-**Scope:** Current Windows 11 and Docker Desktop environment.
+**Last updated:** 2 November 2026  
+**Scope:** Windows host, Docker Desktop, WSL 2, home networking and persistent application data.
 
-## Purpose
+## 1. Purpose
 
-This page explains how the documented services are hosted, how local and remote requests reach them, how Docker networking is arranged, and where important application data is stored. It describes the observed environment, not a target design.
+This document describes the current infrastructure architecture and how its components interact.
 
-## Architecture diagram
+It covers:
 
-GitHub renders the Mermaid diagram below. The editable source is also available at [`diagrams/current-architecture.mmd`](../diagrams/current-architecture.mmd).
+- Physical host and operating system.
+- Docker Desktop and WSL 2.
+- Local DNS and application routing.
+- Remote connectivity.
+- Application services and Docker networks.
+- Persistent data and external backups.
+
+The diagram describes the observed environment, not a proposed future design.
+
+## 2. High-level architecture
+
+The infrastructure has four principal layers:
+
+| Layer | Components | Responsibility |
+|---|---|---|
+| Home network | UniFi Gateway, switches and access points | Local DNS, hostname resolution and LAN routing |
+| Host | HP Elite Mini 800 G9, Windows 11 | Physical compute, host firewall and storage |
+| Container platform | Docker Desktop, Linux Docker Engine, WSL 2 | Runs application and infrastructure containers |
+| Remote access | Twingate and UniFi Teleport | Allows remote connectivity to home-network services |
+
+## 3. Architecture flow
 
 ```mermaid
 flowchart TB
-    subgraph REMOTE["Remote access outside the home"]
-        REMOTE_DEVICE["Remote device"]
-        TW_CLIENT["Twingate client"]
-        WIFI_CLIENT["WiFiman client - Teleport VPN"]
-    end
+    HOME["Home network clients"] --> DNS["UniFi local DNS and LAN routing"]
+    DNS --> FW["Windows host firewall"]
+    FW --> CADDY["Caddy reverse proxy"]
+    CADDY --> APPS["Self-hosted applications"]
 
-    subgraph HOME_NET["Home network - UniFi"]
-        UGW["UniFi Gateway - local DNS and LAN routing"]
-        LAN_CLIENT["Home network clients"]
-        SWITCH["UniFi switch and access points"]
-        HOME_SERVICES["Any service on the home network"]
-    end
+    REMOTE["Remote device"] --> TW["Twingate client"]
+    TW --> CONNECTOR["Twingate Connector"]
+    CONNECTOR --> ALL_SERVICES["Any service on home network"]
 
-    subgraph HOST["HP Elite Mini 800 G9 - Windows 11 host"]
-        FW["Windows Defender Firewall"]
+    REMOTE --> WIFI["WiFiman - Teleport VPN"]
+    WIFI --> DNS
 
-        subgraph WSL["WSL 2"]
-            UBUNTU["Ubuntu - Docker CLI client"]
-        end
+    HOST["Windows 11 host"] --> DOCKER["Docker Desktop"]
+    WSL["Ubuntu WSL 2"] -.-> DOCKER
 
-        subgraph DOCKER["Docker Desktop - Linux Docker Engine"]
-    CADDY["Caddy reverse proxy"]
-    TWIN["Twingate Connector"]
-            subgraph APPGROUPS["Application containers"]
-                WEB["Apprenticeship Tracker web"]
-                HA["Home Assistant"]
-                JELLY["Jellyfin"]
-                HOMEPAGE["Homepage"]
-                IMMICH["Immich server"]
-                PG["Immich PostgreSQL"]
-                ML["Immich machine learning"]
-                VALKEY["Valkey"]
-                SEARCH["SearXNG"]
-                VERT["Vert"]
-                WEBUI["Open WebUI"]
-                API["Apprenticeship Tracker API"]
-                PI["Pi-hole"]
-                UNBOUND["Unbound"]
-                KALI["Kali route target - unresolved"]
-            end
-        end
-    end
-
-    LAN_CLIENT -->|Local DNS query| UGW
-    UGW -.->|Local hostname resolves to host LAN address| LAN_CLIENT
-    LAN_CLIENT --> SWITCH
-    SWITCH -->|HTTP or HTTPS request| FW
-    FW --> CADDY
-
-    REMOTE_DEVICE --> TW_CLIENT
-    TW_CLIENT -->|Private access connection| TWIN
-    TWIN -->|User-confirmed access to any home-network service| HOME_SERVICES
-
-    REMOTE_DEVICE --> WIFI_CLIENT
-    WIFI_CLIENT -->|Teleport VPN connection| UGW
-    UGW -->|Permitted VPN access| FW
-
-    UBUNTU -.->|Docker CLI uses same daemon| DOCKER
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    IMMICH --> PG
-    IMMICH --> ML
-    IMMICH --> VALKEY
-
-    subgraph STORAGE["Persistent storage"]
-    HOSTDATA["Host storage (mount details omitted)"]
-        VOLUMES["Docker named volumes"]
-        RESTIC["External encrypted Restic repository"]
-        SNAPSHOT["Successful initial snapshot 7ec7a616"]
-    end
-    %% Historical host-mount relationship omitted
-    %% Historical host-mount relationship omitted
-    VOLUMES -.->|Model cache| ML
-    VOLUMES -.->|Application data| WEBUI
-    VOLUMES -.->|Caddy state| CADDY
-    %% Historical host-mount relationship omitted
-    %% Historical host-mount relationship omitted
-    %% Historical host-mount relationship omitted
-
-    IMMICH -->|Initial backup completed successfully| RESTIC
-    RESTIC -->|48,335 files - 197.721 GiB scanned| SNAPSHOT
-    SNAPSHOT -.->|Restore test outstanding| RESTORE["Recovery verification"]
-
-    PI -.->|Configured upstreams| PUBLIC_DNS["Public DNS upstreams"]
-    PI --- UNBOUND_NOTE["Unbound runs separately and is not configured as Pi-hole upstream"]
-
-    classDef pending stroke-dasharray: 5 5;
-    class KALI,RESTORE pending;
+    IMMICH["Immich"] --> RESTIC["Encrypted Restic repository"]
+    RESTIC --> SNAPSHOT["Verified database recovery path"]
 ```
 
-## 1. Host and container runtime
+The Twingate connection represents operator-confirmed access to any service on the home network. UniFi Teleport is a separate VPN option.
 
-The current environment has three relevant layers:
+## 4. Host and container runtime
 
-| Layer | Observed component | Role |
-|---|---|---|
-| Physical host | HP Elite Mini 800 G9 | Runs Windows and the local infrastructure workload |
-| Host operating system | Windows 11 | Owns the physical network interfaces, host firewall and NTFS-backed application directories |
-| Container platform | Docker Desktop 4.95.0 | Provides the Linux container environment and Docker Engine 29.8.2 |
-| Linux workspace | Ubuntu on WSL 2 | Provides a Linux command-line workspace and Docker CLI; it connects to the same Docker Desktop daemon as the Windows CLI |
+The host is an HP Elite Mini 800 G9 running Windows 11.
 
-The Windows Docker CLI and Ubuntu WSL Docker CLI were both observed to communicate with the same Docker Desktop daemon. The Docker server ID matched in both environments. Ubuntu WSL is therefore a client/workspace for the same engine, not a second independent Docker host.
+The container platform is Docker Desktop 4.95.0 with Docker Engine 29.8.2, using the Linux/amd64 environment.
 
-## 2. Local DNS and application routing
+Ubuntu runs under WSL 2 and provides a Linux command-line workspace.
 
-The home network uses the UniFi Gateway to manage local DNS records and hostnames, as well as LAN routing.
+The Windows Docker CLI and Ubuntu WSL Docker CLI were observed communicating with the same Docker Desktop daemon. The matching Docker server ID established that Ubuntu WSL is a client environment for that daemon, not a second independent Docker host.
 
-The request path for a local web service is:
+## 5. Local DNS and routing
 
-1. A home-network client asks UniFi DNS to resolve the local hostname.
-2. UniFi returns the configured address, which points to the Windows host in the documented web-service design.
-3. The client sends its HTTP or HTTPS request to the host.
-Caddy receives the HTTP/HTTPS request.
-5. Caddy selects the configured upstream and forwards the request to the relevant application.
+The home network uses the UniFi Gateway for local DNS records, hostname resolution and LAN routing.
+
+The local web request flow is:
+
+1. A client requests resolution of a local hostname.
+2. The UniFi Gateway resolves the configured local record.
+3. The hostname resolves to the relevant host LAN address.
+4. The client sends an HTTP or HTTPS request.
+5. Caddy receives the request on the Windows host's published ports 80 or 443.
+6. Caddy forwards it to the configured application upstream.
 
 The responsibilities are distinct:
 
-- **UniFi Gateway:** local DNS resolution, hostnames and LAN routing.
-- **Caddy:** application-level HTTP and HTTPS reverse-proxy routing.
+- **UniFi:** DNS and network routing.
+- **Caddy:** HTTP/HTTPS reverse proxy and application-level routing.
+- **Docker:** Container execution and internal networking.
 
-UniFi resolves the name; Caddy selects the application.
+The actual local hostname values and LAN addresses are omitted from this portfolio.
 
-## 3. Remote access
+## 6. Remote access architecture
 
-Two independent options are used for remote access from outside the home network.
+Two independent methods provide remote connectivity.
 
 ### Twingate
 
-The Twingate Connector runs as a Docker container using host networking. The user has confirmed that Twingate provides remote access to **any service on the home network**.
+The Twingate Connector provides remote-access connectivity; historical container network mode is omitted.
 
-The architecture therefore treats Twingate as a general remote-access path to home-network services, rather than limiting it to the services behind Caddy.
+The operator has confirmed that Twingate provides access to any service on the home network.
+
+This is documented as a user-confirmed capability. Connector credentials, tokens and private configuration are excluded from the repository.
 
 ### UniFi Teleport
 
-UniFi Teleport provides a separate VPN access option through the WiFiman client. A remote device connects to the UniFi Gateway and receives access to the home network according to the configured network policies.
+UniFi Teleport provides an alternative remote VPN connection through the WiFiman client.
 
-Twingate and UniFi Teleport are independent options. They do not need to be active together for a remote session.
+The remote device establishes a Teleport connection to the UniFi Gateway. Network access then follows the gateway's configured policies.
 
-## 4. Caddy request and service flow
+Twingate and Teleport are independent remote-access methods.
 
-Caddy provides the HTTP/HTTPS reverse-proxy entry point; exact host-published port details are omitted.
+## 7. Caddy reverse proxy
 
-Two configured routes use Docker service-name resolution on `[DOCKER_NETWORK_1]`:
+Caddy is the primary HTTP/HTTPS reverse proxy.
 
-- Apprenticeship Tracker web: `web:80`
-- Home Assistant: `homeassistant:8123`
+The main configuration imports site-specific Caddy snippets. The observed configuration includes routes to:
 
-The other identified Caddy routes use `[DOCKER_HOST_GATEWAY_ALIAS]` and a host-published port:
+| Application | Configured upstream |
+|---|---|
+| Apprenticeship Tracker web | `web:80` |
+| Home Assistant | `homeassistant:8123` |
+| Homepage | `[DOCKER_HOST_GATEWAY_ALIAS]:3001` |
+| Jellyfin | `[DOCKER_HOST_GATEWAY_ALIAS]:8096` |
+| Immich | `[DOCKER_HOST_GATEWAY_ALIAS]:2283` |
+| SearXNG | `[DOCKER_HOST_GATEWAY_ALIAS]:8080` |
+| Vert | `[DOCKER_HOST_GATEWAY_ALIAS]:3005` |
+| Open WebUI | `[DOCKER_HOST_GATEWAY_ALIAS]:3000` |
+| Kali route | `[DOCKER_HOST_GATEWAY_ALIAS]:8088`, unresolved |
 
-| Application route label | Configured upstream | Identified destination |
-|---|---|---|
-| Dashboard | `[DOCKER_HOST_GATEWAY_ALIAS]:3001` | Homepage |
-| Movies | `[DOCKER_HOST_GATEWAY_ALIAS]:8096` | Jellyfin |
-| Photos | `[DOCKER_HOST_GATEWAY_ALIAS]:2283` | Immich server |
-| Search | `[DOCKER_HOST_GATEWAY_ALIAS]:8080` | SearXNG |
-| Vert | `[DOCKER_HOST_GATEWAY_ALIAS]:3005` | Vert |
-| Ollama | `[DOCKER_HOST_GATEWAY_ALIAS]:3000` | Open WebUI host port in the captured inventory; this route name does not establish that it serves the Ollama API |
-| Kali | `[DOCKER_HOST_GATEWAY_ALIAS]:8088` | Unresolved; no matching Windows listener or published container port was found during the check |
+The Caddy configuration passed validation. Validation confirms that the configuration can be parsed and adapted. It does not establish that every upstream is reachable at every moment.
 
-Caddy configuration validation passed. This confirms that the configuration can be parsed and adapted; it does not prove that every upstream is reachable at all times.
+The `ollama` site snippet currently points to the Open WebUI host-published port in the captured inventory. Its route label alone does not establish that it serves the Ollama API.
 
-The historical Immich 502 responses were explained by the user as expected errors during an intentional Immich image update. They are recorded as maintenance-related downtime, not as a persistent route fault.
-
-## 5. Application groups
+## 8. Application architecture
 
 ### Immich
 
-The observed Immich application group contains:
+The Immich application group contains:
 
-- `[CONTAINER_ROLE_IMMICH]`, the application server;
-- `[CONTAINER_ROLE_DATABASE]`, the PostgreSQL database;
-- `[CONTAINER_ROLE_PROCESSOR]`, the machine-learning service;
-- `[CONTAINER_ROLE_CACHE]`, which uses the Valkey image in the captured inventory.
+- Immich server.
+- PostgreSQL database.
+- Machine-learning service.
+- Valkey cache service.
 
-These containers share `[DOCKER_NETWORK_2]`. Caddy and Homepage also join that network. The configured Caddy photos route currently uses the host-published Immich port rather than the direct Docker network address.
+The containers share the Immich Docker network.
+
+The original photo/video library and managed media are stored in host-backed directories. PostgreSQL uses a separate host-backed data directory.
 
 ### Apprenticeship Tracker
 
-The observed project has separate web and API containers. The web container shares `[DOCKER_NETWORK_1]` with Caddy and is configured as the direct `web:80` upstream. The API publishes host port 4000. The API and web containers are also members of the project's default network.
+The project has separate web and API containers.
+
+The application has separate web and API components; exact network membership and host-port details are omitted.
 
 ### Other services
 
-Home Assistant, Jellyfin, SearXNG, Homepage, Vert and Open WebUI are separately inventoried services.
+The wider service environment includes:
 
-The historical DNS upstream and Docker-network relationship is omitted.
+- Home Assistant.
+- Jellyfin.
+- Homepage.
+- SearXNG.
+- Vert.
+- Open WebUI.
+- Pi-hole.
+- Unbound.
+- Twingate Connector.
+- VEMS and other application workloads.
 
-## Historical Docker network topology details omitted## 7. Persistent data and storage
+## Historical Docker network topology details omitted## 10. Persistent storage and backup architecture
 
-Application state uses persistent storage; historic per-service host mount details are omitted.
+The environment uses both Windows bind mounts and Docker named volumes.
 
-| Workload | Observed storage pattern | Documentation concern |
-|---|---|---|
-| [SERVICE ROLE] | [HISTORICAL STORAGE TOPOLOGY OMITTED] | [OPERATIONAL DETAILS GENERALISED] |
-| [SERVICE ROLE] | [HISTORICAL STORAGE TOPOLOGY OMITTED] | [OPERATIONAL DETAILS GENERALISED] |
-| [SERVICE ROLE] | [HISTORICAL STORAGE TOPOLOGY OMITTED] | [OPERATIONAL DETAILS GENERALISED] |
-| Immich machine learning | Docker named volume | Model cache rather than primary user media |
-| [SERVICE ROLE] | [HISTORICAL STORAGE TOPOLOGY OMITTED] | [OPERATIONAL DETAILS GENERALISED] |
-| [SERVICE ROLE] | [HISTORICAL STORAGE TOPOLOGY OMITTED] | [OPERATIONAL DETAILS GENERALISED] |
-| Open WebUI | Docker named volume at `/app/backend/data` | Preserve application data volume |
-| [SERVICE ROLE] | [HISTORICAL STORAGE TOPOLOGY OMITTED] | [OPERATIONAL DETAILS GENERALISED] |
+Important storage patterns include:
+- [Historical per-service storage and persistence details omitted.]
+- Immich managed media: host-backed directory.
+- PostgreSQL: separate host-backed database directory.
+- Immich machine-learning model cache: Docker named volume.
+- Open WebUI application data: Docker named volume.
+- [Historical per-service storage and persistence details omitted.]
+- Home Assistant configuration: host directory.
+- Pi-hole: no Docker mounts observed during the audit.
 
-## 8. Immich backup status
+The Pi-hole configuration and database files therefore require special care before container recreation.
 
-An initial full Restic backup completed successfully on 1 November 2026.
+### Restic backup
 
-| Metric | Result |
-|---|---:|
-| Repository ID prefix | `[PRIVATE_RESTIC_REPOSITORY_IDENTIFIER]` |
-| Snapshot ID | `7ec7a616` |
-| Files processed | 48,335 |
-| Data scanned | 197.721 GiB |
-| Data added to repository | 136.272 GiB |
-| Data stored | 135.725 GiB |
-| Duration | 3 hours, 47 minutes, 13 seconds |
-| VSS source snapshot for `C:\` | Successful |
-| Restic exit code | 0 |
+The Immich backup process uses Restic 0.19.1 and an encrypted repository on an external Seagate drive.
 
-The earlier Restic attempt failed during writes to the external drive and was investigated separately. The later successful run demonstrates that a complete initial snapshot was subsequently saved. The cause of the earlier I/O interruption has not been conclusively identified.
+Two snapshots were confirmed:
 
-A post-backup repository check, inspection of snapshot contents and a sample restore test remain outstanding. The initial snapshot is a successful backup, but the complete recovery process has not yet been demonstrated.
+| Snapshot | Purpose |
+|---|---|
+| `7ec7a616` | Initial full backup |
+| `e8d1bd6a` | Subsequent daily backup |
 
-## Historical host-port and firewall-boundary details omitted## 10. Diagram legend and limitations
+The initial backup processed 48,335 files and 197.721 GiB. It stored 135.725 GiB in the repository.
 
-- Solid arrows represent a configured route or an observed service relationship documented from configuration, inventory or operator confirmation.
-- Dashed arrows represent unresolved or pending verification.
-- The network topology diagram records container membership, not application traffic.
-- The diagram intentionally omits internal IP addresses, private hostnames, credentials and certificate material.
-- The architecture is a point-in-time view. Refresh it when containers, Compose definitions, ports, networks or storage mounts change.
+A database dump was successfully restored from the repository, compared against its original SHA-256 hash, and imported into an isolated PostgreSQL 14 instance.
+
+A complete Immich application restore has not yet been performed.
+
+## 11. Outstanding architecture concerns
+
+The following matters remain open:
+
+- Pi-hole's active upstreams point to public DNS rather than the separately running Unbound service.
+- Pi-hole has no persistent Docker mounts.
+- A Kali-labelled Caddy upstream remains unresolved.
+- The Open WebUI upstream is labelled `ollama` in Caddy.
+- Several containers publish ports on all host interfaces.
+- Complete application recovery has not been demonstrated.
+- External storage reliability needs continued observation following the earlier I/O interruption.
+
+## 12. Diagram and evidence conventions
+
+- Solid arrows represent observed configurations or confirmed relationships.
+- Dashed arrows represent unresolved or pending relationships.
+- Operator-confirmed facts are identified explicitly.
+- Network membership does not prove actual application traffic.
+- Private hostnames, IP addresses, credentials and certificate contents are excluded.
 
 ## Related documentation
 
@@ -255,4 +222,5 @@ A post-backup repository check, inspection of snapshot contents and a sample res
 - [Networking and Routing](networking.md)
 - [Backup and Recovery](backup-and-recovery.md)
 - [Security Baseline](security-baseline.md)
+- [Known Gaps and Actions](known-gaps-and-actions.md)
 - [Evidence and Method](evidence-and-method.md)

@@ -1,29 +1,30 @@
 flowchart TB
+
     subgraph REMOTE["Remote access outside the home"]
         REMOTE_DEVICE["Remote device"]
         TW_CLIENT["Twingate client"]
-        WIFI_CLIENT["WiFiman client - Teleport VPN"]
+        WIFI_CLIENT["WiFiman - UniFi Teleport"]
     end
 
     subgraph HOME_NET["Home network - UniFi"]
         UGW["UniFi Gateway - local DNS and LAN routing"]
         LAN_CLIENT["Home network clients"]
         SWITCH["UniFi switch and access points"]
-        HOME_SERVICES["Any service on the home network"]
     end
 
-    subgraph HOST["HP Elite Mini 800 G9 - Windows 11 host"]
+    subgraph HOST["HP Elite Mini 800 G9 - Windows 11"]
         FW["Windows Defender Firewall"]
 
         subgraph WSL["WSL 2"]
-            UBUNTU["Ubuntu - Docker CLI client"]
+            UBUNTU["Ubuntu - Docker CLI"]
         end
 
         subgraph DOCKER["Docker Desktop - Linux Docker Engine"]
-    CADDY["Caddy reverse proxy"]
+            CADDY["Caddy reverse proxy - TCP 80 and 443"]
     TWIN["Twingate Connector"]
-            subgraph APPGROUPS["Application containers"]
+            subgraph APPS["Application containers and services"]
                 WEB["Apprenticeship Tracker web"]
+                API["Apprenticeship Tracker API"]
                 HA["Home Assistant"]
                 JELLY["Jellyfin"]
                 HOMEPAGE["Homepage"]
@@ -34,34 +35,41 @@ flowchart TB
                 SEARCH["SearXNG"]
                 VERT["Vert"]
                 WEBUI["Open WebUI"]
-                API["Apprenticeship Tracker API"]
                 PI["Pi-hole"]
                 UNBOUND["Unbound"]
-                KALI["Kali route target - unresolved"]
+                OTHER["Other documented services"]
             end
         end
     end
 
-    %% Local DNS resolution and web application routing.
+    subgraph STORAGE["Persistent data and backup"]
+    HOSTDATA["Host storage (mount details omitted)"]
+        VOLUMES["Docker named volumes"]
+        RESTIC["Encrypted Restic repository on external Seagate drive"]
+        SNAPSHOT["Initial snapshot 7ec7a616"]
+        DAILY["Daily snapshot e8d1bd6a"]
+    end
+
+    %% Local DNS and reverse-proxy flow
     LAN_CLIENT -->|Local DNS query| UGW
-    UGW -.->|Local hostname resolves to host LAN address| LAN_CLIENT
+    UGW -.->|Configured local hostname resolution| LAN_CLIENT
     LAN_CLIENT --> SWITCH
     SWITCH -->|HTTP or HTTPS request| FW
     FW --> CADDY
 
-    %% Twingate and UniFi Teleport are independent remote-access options.
+    %% Independent remote access paths
     REMOTE_DEVICE --> TW_CLIENT
-    TW_CLIENT -->|Private access connection| TWIN
-    TWIN -->|User-confirmed access to any home-network service| HOME_SERVICES
+    TW_CLIENT -->|Remote private access| TWIN
+    TWIN -->|Operator-confirmed access to any home-network service| OTHER
 
     REMOTE_DEVICE --> WIFI_CLIENT
-    WIFI_CLIENT -->|Teleport VPN connection| UGW
-    UGW -->|Permitted VPN access| FW
+    WIFI_CLIENT -->|Teleport VPN| UGW
+    UGW -->|Permitted home-network access| FW
 
-    %% Ubuntu WSL uses the same Docker Desktop daemon.
-    UBUNTU -.->|Docker CLI uses same daemon| DOCKER
+    %% WSL and Docker
+    UBUNTU -.->|Uses the same Docker daemon| DOCKER
 
-    %% Caddy upstreams observed in configuration.
+    %% Caddy upstreams observed in configuration
     %% Historical Caddy upstream and port mapping omitted
     %% Historical Caddy upstream and port mapping omitted
     %% Historical Caddy upstream and port mapping omitted
@@ -71,31 +79,26 @@ flowchart TB
     %% Historical Caddy upstream and port mapping omitted
     %% Historical Caddy upstream and port mapping omitted
     %% Historical Caddy upstream and port mapping omitted
+    %% Immich dependencies
     IMMICH --> PG
     IMMICH --> ML
     IMMICH --> VALKEY
 
-    subgraph STORAGE["Persistent storage"]
-    HOSTDATA["Host storage (mount details omitted)"]
-        VOLUMES["Docker named volumes"]
-        RESTIC["External encrypted Restic repository"]
-        SNAPSHOT["Successful initial snapshot 7ec7a616"]
-    end
+    %% Persistent storage
     %% Historical host-mount relationship omitted
     %% Historical host-mount relationship omitted
     VOLUMES -.->|Model cache| ML
     VOLUMES -.->|Application data| WEBUI
     VOLUMES -.->|Caddy state| CADDY
-    %% Historical host-mount relationship omitted
-    %% Historical host-mount relationship omitted
-    %% Historical host-mount relationship omitted
 
-    IMMICH -->|Initial backup completed successfully| RESTIC
-    RESTIC -->|48,335 files - 197.721 GiB scanned| SNAPSHOT
-    SNAPSHOT -.->|Restore test outstanding| RESTORE["Recovery verification"]
+    %% Backup history
+    IMMICH -->|VSS-backed Restic backup| RESTIC
+    RESTIC --> SNAPSHOT
+    RESTIC --> DAILY
 
-    PI -.->|Configured upstreams| PUBLIC_DNS["Public DNS upstreams"]
+    %% Pi-hole and Unbound
+    PI -.->|Configured public DNS upstreams| PUBLIC_DNS["Public DNS"]
     PI --- UNBOUND_NOTE["Unbound runs separately and is not configured as Pi-hole upstream"]
 
     classDef pending stroke-dasharray: 5 5;
-    class KALI,RESTORE pending;
+    class OTHER pending;

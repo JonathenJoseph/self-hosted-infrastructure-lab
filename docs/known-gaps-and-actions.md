@@ -1,49 +1,93 @@
 # Known Gaps and Actions
 
-**Last reviewed:** 1 November 2026
+**Last updated:** 2 November 2026
 
-This file tracks evidence-backed documentation and reliability tasks. It is not authorisation to perform changes.
+This document tracks technical gaps, recovery risks and outstanding improvements identified during the infrastructure audit.
 
-## Priority 0: protect critical state
+It distinguishes completed work from tasks that still require testing. Listing an action does not constitute permission to change the live environment.
 
-| Item | Evidence | Required outcome | Status |
+## 1. Priority 0: backup and recovery
+
+| Item | Evidence | Required action | Status |
 |---|---|---|---|
-| Immich Restic backup | Initial full backup completed; snapshot `7ec7a616` saved; 48,335 files and 197.721 GiB processed | Run a post-backup integrity check, inspect snapshot contents and test restoration | Snapshot completed; verification open |
-| Immich PostgreSQL dump | Gzip integrity passed; database restore not tested | Restore dump in an isolated PostgreSQL instance | Open |
-| Immich recovery procedure | Initial Restic snapshot exists; no complete recovery drill performed | Restore sample files and test the application recovery sequence | Open |
-| External storage reliability | First full write attempt produced Disk 153, Disk 51 and NTFS 50 errors; a subsequent full backup succeeded | Monitor subsequent backup runs and investigate any recurrence | Initial retry successful; cause unresolved |
-| Pi-hole state | No mounts; important files appear in writable container layer | Export Teleporter backup and verify recovery path | Open |
-| Pi-hole deployment definition | Active Pi-hole has no Compose labels; referenced Compose file absent | Reconstruct or locate definition only after state export | Open |
+| Initial Immich backup | Snapshot `7ec7a616` saved successfully | Preserve the initial recovery point | Complete |
+| Subsequent backup | Snapshot `e8d1bd6a` saved successfully | Continue daily backups | Initial second snapshot complete |
+| Repository structural check | Two snapshots checked; no errors reported | Perform periodic checks | Initial check passed |
+| Additional repository files | Restic reported 475 additional files | Investigate and clean up only after further verification | Open |
+| File recovery | Restored dump matched original SHA-256 | Retain test evidence | Complete |
+| PostgreSQL recovery | 72 base tables and eight extensions verified | Document recovery results | Complete |
+| Full application recovery | Database import succeeded, but Immich application not started against restored database | Perform an isolated Immich recovery drill | Open |
+| Full repository data check | Normal `restic check` performed | Run `restic check --read-data` when appropriate | Open |
+| External drive reliability | Earlier Disk and NTFS errors; subsequent full backup succeeded | Monitor future backup runs and investigate recurrence | Monitoring |
+| Password recovery | Password file exists with restricted ACLs | Confirm secure off-device recovery copy | Open |
 
-## Priority 1: reproducible deployment documentation
+## 2. Priority 1: daily backup automation
 
-| Item | Evidence | Required outcome | Status |
+| Item | Evidence | Required action | Status |
 |---|---|---|---|
-| Standalone containers | Six in-scope containers lacked Compose project labels | Locate source deployment definitions or create controlled Compose definitions | Open |
-| Caddy routing | Nine snippets observed; Kali upstream unresolved | Verify each route, intended hostname and service owner | Partially documented |
-| DNS architecture | Pi-hole configured with public upstreams; Unbound running separately | Confirm whether Unbound is intended to be Pi-hole's upstream | Open |
-| Jellyfin mount layout | Parent media path and cache/config subfolders mounted | Confirm that media root does not unintentionally include app state | Open |
-| Host port exposure | Multiple services published on all host interfaces | Document intended access scope for each service | Open |
+| Task Scheduler | Daily task configured for 05:00 | Keep schedule active | Configured |
+| Latest PowerShell script | Includes VSS, logging, freshness checks, snapshot verification and retention | Validate updated version | Implemented; operational test pending |
+| Database freshness | Script requires a current-day database dump | Confirm Immich produces the daily dump before 05:00 | Open |
+| Dry-run after midnight | Correctly refused to back up yesterday's dump | Retain fail-safe behaviour | Verified |
+| First scheduled run with latest script | Not yet confirmed | Check task result and Restic snapshots after scheduled execution | Open |
+| Automatic retention | Included in updated script | Verify after a successful scheduled run | Pending |
+| Concurrent execution | Task configured to prevent overlapping runs | Preserve setting | Configured |
+| Failure recovery | Task Scheduler restart and missed-run options configured | Confirm actual behaviour during a controlled failure test | Open |
 
-## Priority 2: security and operations
+## 3. Priority 2: network and deployment reproducibility
 
-| Item | Evidence | Required outcome | Status |
+| Item | Evidence | Required action | Status |
 |---|---|---|---|
-| Homepage Docker socket | Read-only Docker socket mount | Evaluate restricted socket proxy or remove integration if unnecessary | Open |
-| Docker Desktop firewall rule | Backend inbound TCP/UDP Any on Private/Public | Verify dependencies and narrow safely if possible | Open |
-| HTTP/HTTPS firewall rules | Duplicate broad inbound rules | Remove redundant rules after exporting a baseline | Open |
-| Nextcloud firewall rules | Old Nextcloud allow rules remain after volume/container removal | Remove if confirmed unused | Open |
-| AnyDesk firewall rules | Executable paths absent and process not running | Remove orphaned entries if AnyDesk is no longer needed | Open |
-| Container privilege | Homepage and Open WebUI observed as root | Check non-root support and volume permissions | Open |
-| Health checks | Several containers have no health check | Add application-appropriate checks where supported | Open |
-| Image pinning | Moving tags in use | Record image digests and establish update/rollback process | Open |
+| Caddy route coverage | Nine site snippets observed | Verify application reachability and upstream ownership | Partially documented |
+| Kali route | Upstream port 8088 unresolved | Identify the intended service or remove the obsolete route | Open |
+| Open WebUI route label | `ollama` snippet points to the Open WebUI host port | Confirm intended route naming | Open |
+| Pi-hole deployment | Active container has no mounts | Export configuration and plan persistent storage | Open |
+| Pi-hole Compose definition | Referenced file absent | Locate or reconstruct deployment definition after preserving current state | Open |
+| Pi-hole and Unbound relationship | Pi-hole uses public upstreams, Unbound runs separately | Confirm intended DNS architecture | Open |
+| Standalone containers | Several containers lack Compose project labels | Identify reproducible deployment definitions | Open |
 
-## Completed or explained
+## 4. Priority 3: security and operations
 
-- Nextcloud containers were absent; four Nextcloud-named Docker volumes were removed at the user's explicit request. The corresponding volume-name filter returned no remaining matches.
-- Immich proxy 502 errors recorded during the Caddy log review were explained by the user as expected errors during intentional Immich maintenance. Immich was subsequently reported back online.
+| Item | Evidence | Required action | Status |
+|---|---|---|---|
+| Homepage Docker socket | Read-only Docker socket mount observed | Evaluate a restricted socket proxy or alternative integration | Open |
+| Docker Desktop firewall rule | Broad backend firewall exception observed | Verify requirements and narrow safely if appropriate | Open |
+| HTTP/HTTPS firewall rules | Duplicate broad rules identified | Review for redundancy and remove only after testing | Open |
+| Nextcloud firewall rules | Old rules remain after Nextcloud removal | Confirm they are unused before removal | Open |
+| AnyDesk firewall rules | Obsolete executable paths and unused process observations | Confirm they are no longer required | Open |
+| Container privileges | Some services observed running as root | Evaluate non-root operation and volume permissions | Open |
+| Container health checks | Several containers lack health checks | Add application-appropriate health checks where supported | Open |
+| Image pinning | Moving image tags observed | Record immutable digests and establish rollback procedures | Open |
+
+## 5. Completed work
+
+The following activities have been completed:
+
+- Nextcloud containers were absent during the audit.
+- Four Nextcloud-named Docker volumes were removed at the user's explicit request.
+- Immich was returned to service after intentional image maintenance.
 - Caddy configuration validation passed.
-- The initial Immich Restic backup completed successfully and saved snapshot `7ec7a616`.
-- The successful Restic run processed 48,335 files and 197.721 GiB, storing 135.725 GiB in the repository.
-- The earlier failed Restic write attempt was investigated using Windows Disk and NTFS event logs. A subsequent full backup succeeded, although the original I/O interruption's cause remains unresolved.
-- Twingate remote access to any service on the home network was confirmed by the operator.
+- An initial encrypted Restic backup completed successfully.
+- A second Restic snapshot was created in the same repository.
+- Repository structural checking found no errors.
+- A database dump was restored from Restic.
+- Original and restored SHA-256 hashes matched.
+- The recovered database was imported into isolated PostgreSQL.
+- 72 base tables and eight extensions were confirmed.
+- Temporary PostgreSQL test resources were removed.
+- A manual Restic retention policy was applied without deleting either existing snapshot.
+- Twingate access to any service on the home network was confirmed by the operator.
+- Windows Task Scheduler was configured for daily execution.
+
+## 6. Change management principles
+
+Before modifying a live service:
+
+1. Confirm the current configuration and service owner.
+2. Identify persistent data and dependencies.
+3. Confirm a working backup exists.
+4. Document the proposed change and expected impact.
+5. Define a rollback method.
+6. Validate the result after the change.
+
+Do not delete an unused image, volume or configuration directory solely because it is not currently attached to a running container.

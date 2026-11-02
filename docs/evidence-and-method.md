@@ -1,80 +1,256 @@
 # Evidence and Method
 
-## Evidence standard
+**Last updated:** 2 November 2026
 
-This documentation separates direct observations from interpretations.
+## 1. Purpose
 
-- **Verified:** direct command output, container inspection, file listing or configuration content was supplied during the audit.
-- **User-confirmed:** explicitly confirmed by the operator.
-- **Inferred:** a conclusion follows from multiple observations but has not been tested directly.
-- **Open:** further evidence or user intent is required.
-- **Deferred:** intentionally excluded from the current scope.
+This document describes how infrastructure findings are collected, interpreted and recorded.
 
-## Commands and evidence classes used
+The portfolio separates direct technical evidence from operator confirmation and assumptions.
+
+The purpose is to make the documentation reproducible and prevent untested assumptions from being presented as established facts.
+
+## 2. Evidence classifications
+
+| Classification | Meaning |
+|---|---|
+| Verified | Directly supported by command output, configuration inspection or successful test result |
+| User-confirmed | Explicitly confirmed by the infrastructure operator |
+| Inferred | Reasonable conclusion based on available evidence, but not demonstrated directly |
+| Open | Further investigation or validation is required |
+| Deferred | Intentionally outside the current investigation scope |
+
+## 3. Evidence collection methods
 
 | Area | Evidence gathered |
 |---|---|
-| Host | Windows build/system information, CPU and memory inventory, storage capacity |
-| WSL | `wsl --version`, distribution state and Docker CLI/server identity |
-| Docker | `docker version`, `docker ps -a`, `docker inspect`, `docker stats`, `docker compose ls`, `docker network ls/inspect`, `docker volume ls/inspect`, `docker system df -v` |
-| Compose | `docker compose config` validation and service discovery for available project files |
-| Caddy | Main Caddyfile, site snippets, network membership, `caddy validate`, recent logs |
-| Firewall | `Get-NetConnectionProfile`, `Get-NetFirewallProfile`, `Get-NetFirewallRule` with port/address/application filters |
-| Storage | Host directory sizes and mount inspection |
-| Immich database backup | gzip stream decompression and integrity check |
-| Restic preparation | `restic version`, repository initialisation and dry-run backup output |
-| Restic backup | Full backup output showing VSS snapshot creation, files and directories processed, data stored, saved snapshot ID and exit code |
-| Windows storage investigation | Disk and NTFS System event logs, `chkdsk D: /scan`, device health observations |
-| Pi-hole | Mount inspection, `docker diff`, container status and upstream configuration |
-| Remote access | Operator confirmation that Twingate provides access to any service on the home network |
+| Windows host | Windows build, system information, CPU, memory and storage |
+| WSL | WSL version, kernel and distribution status |
+| Docker | `docker version`, `docker ps -a`, `docker inspect`, `docker stats` |
+| Docker networking | `docker network ls` and `docker network inspect` |
+| Docker storage | `docker volume ls`, `docker volume inspect`, `docker system df -v` |
+| Compose | `docker compose ls` and `docker compose config` |
+| Caddy | Caddyfile, site snippets, `caddy validate` and container logs |
+| Firewall | Windows firewall profile, rule, port and application inspection |
+| Storage | Directory sizes, container mounts and volume inspection |
+| Database dumps | Gzip integrity checks and file metadata |
+| Restic repository | Repository initialisation, snapshot listing, `restic check`, `restic find` and `restic restore` |
+| Backup automation | PowerShell dry runs, script logs and Task Scheduler status |
+| Storage incident | Disk and NTFS Windows event logs, `chkdsk D: /scan` and exposed device telemetry |
+| PostgreSQL recovery | Isolated container import and database inspection |
+| Remote access | Operator confirmation of Twingate access to any service on the home network |
 
-## Backup evidence recorded
+## 4. Initial Restic backup evidence
 
-The successful initial Restic backup output reported:
+The initial full backup output reported:
 
 - Repository opened successfully.
-- A source-side VSS snapshot for `C:\` was created successfully.
-- 48,335 files and 30,960 directories processed.
+- VSS snapshot of `C:\` created successfully.
+- 48,335 files processed.
+- 30,960 directories processed.
 - 197.721 GiB scanned.
-- 136.272 GiB added to the repository, with 135.725 GiB stored.
-- Processing completed in 3 hours, 47 minutes and 13 seconds.
+- 136.272 GiB added to the repository.
+- 135.725 GiB stored.
+- Duration of 3 hours, 47 minutes and 13 seconds.
 - Snapshot `7ec7a616` saved.
-- Backup exit code `0`.
+- Exit code `0`.
 
-This supports the claim that the initial backup run completed and saved a Restic snapshot.
+This establishes that an initial Restic snapshot was successfully saved.
 
-It does not establish that a restore has been tested. A post-backup repository check, snapshot inspection and sample restore remain outstanding.
+## 5. Subsequent snapshot evidence
 
-## Remote-access evidence
+A second snapshot was created:
 
-The operator confirmed that Twingate allows remote access to any service on the home network. This is recorded as user-confirmed configuration information.
+| Snapshot | Time | Tags |
+|---|---|---|
+| `7ec7a616` | 1 November 2026, 18:47:33 | `immich`, `initial-full` |
+| `e8d1bd6a` | 1 November 2026, 23:52:05 | `immich`, `daily` |
 
-The Twingate Connector was also observed in the Docker inventory using host networking. Credential values are intentionally excluded from this portfolio.
+A subsequent `restic snapshots` listing confirmed both snapshots and their six source paths.
+
+## 6. Repository integrity evidence
+
+The command:
+
+```powershell
+restic check
+```
+
+reported:
+
+```text
+25 / 25 index files loaded
+2 / 2 snapshots
+no errors were found
+```
+
+Restic also reported 475 additional files, likely containing duplicate or unreferenced data.
+
+The check did not include `--read-data`, so the portfolio does not claim that every repository data pack has been fully read and verified.
+
+## 7. File restoration evidence
+
+The database dump:
+
+`immich-db-backup-20261101T171904-v3.3.5-pg14.19.sql.gz`
+
+was located in snapshot `e8d1bd6a` and restored to a separate test directory.
+
+The original and restored files both measured 97,168,037 bytes.
+
+PowerShell returned identical SHA-256 results:
+
+```text
+0DB89A7CA4DB0474B0051590CE3D3112600EFA2C653120D926192FE77137FF2A
+```
+
+The comparison returned:
+
+```text
+Identical : True
+```
+
+This supports the claim that the recovered database dump was byte-for-byte identical to the original.
+
+## 8. PostgreSQL recovery evidence
+
+The restored dump was imported into a temporary isolated PostgreSQL container using the same image as the live Immich database.
+
+The test environment used:
+
+- PostgreSQL 14.
+- Database name `immich_db`.
+- Database user `immich`.
+- A dedicated Docker volume.
+- Network mode `none`.
+- No published ports.
+- A temporary generated password.
+
+The import completed with exit code `0`.
+
+The subsequent inspection query returned:
+
+```text
+immich_db|72|1
+```
+
+This confirmed:
+
+- Database name: `immich_db`.
+- Base tables: 72.
+- Application schemas: 1.
+
+The restored database reported the following extensions:
+
+```text
+cube
+earthdistance
+pg_trgm
+plpgsql
+unaccent
+uuid-ossp
+vchord
+vector
+```
+
+The temporary container and volume were removed after testing.
+
+The live Immich database was not modified.
+
+## 9. Backup automation evidence
+
+The daily Restic script is stored at:
+
+`Restic-Immich\Backup-Immich.ps1`
+
+The Windows Task Scheduler task is:
+
+`Immich Daily Restic Backup`
+
+The configured trigger is daily at 05:00.
+
+The task was previously observed with:
+
+- State `Ready`.
+- Last task result `0`.
+- Next run `2 November 2026, 05:00`.
+- No missed runs.
+
+Those observations refer to the earlier task execution and script version.
+
+The latest script introduced a strict current-day database dump requirement. A dry run at 00:11 on 2 November stopped because the most recent database dump was still dated 1 November.
+
+This confirms the freshness check prevented a backup from proceeding with a previous-day database dump.
+
+The first successful scheduled execution of the latest script remains unverified.
+
+## 10. Retention evidence
+
+A Restic retention preview used:
+
+```powershell
+restic forget `
+    --tag immich `
+    --keep-daily 7 `
+    --keep-weekly 4 `
+    --keep-monthly 12 `
+    --keep-tag initial-full `
+    --dry-run
+```
+
+The preview preserved both existing snapshots.
+
+The retention command was subsequently run without `--dry-run`. A later snapshot listing confirmed that both existing snapshots remained present.
+
+The updated daily script contains the retention policy after successful backup verification.
+
+Automatic pruning is not enabled.
+
+## 11. Remote access evidence
+
+The operator confirmed that Twingate allows access to any service on the home network.
+
+The Twingate Connector was observed using Docker host networking.
 
 UniFi Teleport is documented as a separate remote VPN option through WiFiman.
 
-## Important limitations
+The documentation treats the Twingate capability as user-confirmed configuration information rather than an independently captured off-site network test.
 
-- All observations are point-in-time. The environment may have changed since the capture date.
-- The inspection was primarily read-only. A separately recorded cleanup removed four Nextcloud-labelled Docker volumes after no matching Nextcloud containers remained.
-- No complete application restore drill has been completed.
-- No external network scan, formal vulnerability scan or packet capture was performed.
-- Host-port publication does not establish internet exposure.
-- A `healthy` Docker status depends on the configured health check and is not a substitute for end-to-end testing.
-- A running container does not prove that its data is persisted or its deployment can be recreated.
-- Docker network membership does not prove that two applications communicate.
-- Image tags do not uniquely identify immutable image contents; digests were not included in this initial inventory.
-- The successful Restic backup does not by itself prove that the external storage will remain reliable across future runs.
-- The report does not contain secret values, token values, password hashes, `.env` contents, private keys or certificate contents.
+## 12. Important limitations
 
-## Reproducibility
+- All observations are point-in-time and may change as the infrastructure is updated.
+- The initial backup and PostgreSQL restore were successfully tested, but a complete Immich application recovery was not performed.
+- The normal Restic repository check did not read every repository data pack.
+- The earlier external storage interruption remains unexplained.
+- The first successful scheduled execution using the latest backup script has not been confirmed.
+- The long-term behaviour of the external drive has not been established.
+- Published Docker ports do not, on their own, prove internet exposure.
+- Docker network membership does not prove application-level communication.
+- A healthy container status does not necessarily prove end-to-end application health.
+- The portfolio does not contain credentials, API keys, private certificate material or raw database dumps.
 
-When refreshing this audit, capture timestamped outputs and redact secrets before storing them. Prefer command output saved as text files in a private evidence folder. Store sanitised summaries in GitHub; keep raw outputs and private deployment files outside any public repository.
+## 13. Reproducibility and documentation maintenance
 
-## Change record
+When refreshing the audit:
+
+1. Capture timestamped command output.
+2. Record the command and the purpose of each test.
+3. Redact credentials, hostnames and sensitive paths.
+4. Separate observed configuration from operator confirmation.
+5. Record failures as well as successful outcomes.
+6. Keep raw private evidence outside the public portfolio.
+7. Update the snapshot date when refreshing point-in-time results.
+
+## 14. Change history
 
 | Date | Change |
 |---|---|
-| 2026-11-01 | Initial documentation baseline generated from discovery outputs supplied during the audit |
-| 2026-11-01 | Updated backup records after successful initial Restic snapshot `7ec7a616` was saved |
-| 2026-11-01 | Updated remote-access documentation to record operator-confirmed Twingate access to any home-network service |
+| 1 November 2026 | Initial infrastructure documentation baseline |
+| 1 November 2026 | Initial successful Restic snapshot `7ec7a616` |
+| 1 November 2026 | Subsequent snapshot `e8d1bd6a` |
+| 1 November 2026 | Repository structural check completed |
+| 1 November 2026 | Database dump restored and SHA-256 comparison passed |
+| 1 November 2026 | Isolated PostgreSQL database import and inspection passed |
+| 1 November 2026 | Manual retention policy applied |
+| 2 November 2026 | Updated backup automation and retention documentation |
+| 2 November 2026 | Twingate remote-access description updated following operator confirmation |

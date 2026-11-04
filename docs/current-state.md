@@ -1,214 +1,116 @@
-# Current State
 
-**Last updated:** 2 November 2026  
-**Assessment:** Evidence-based infrastructure audit and backup implementation.
 
-## 1. Host baseline
+# Current State and Recorded Evidence
 
-| Component | Observed state |
+## 1. Purpose
+
+This document summarises the recorded state of the self-hosted infrastructure and distinguishes confirmed capabilities from outstanding work.
+
+It is a point-in-time portfolio record. It is not a live monitoring page.
+
+The backup-specific results below reflect evidence recorded on 1–2 November 2026. Other infrastructure details are based on the environment review and may have changed since their observation.
+
+## 2. Host platform
+
+| Component | Recorded state |
 |---|---|
-| Physical host | HP Elite Mini 800 G9 |
-| Processor | Intel Core i9-13900 |
-| CPU configuration | 24 cores / 32 logical processors |
-| Physical memory | Approximately 31.7 GiB |
-| Operating system | Windows 11 |
-| Docker Desktop | 4.95.0 |
-| Docker Engine | 29.8.2 |
-| Docker context | `desktop-linux` |
-| WSL version | 3.0.3.0 |
-| WSL kernel | 6.18.54.1-1 |
-| Linux distribution | Ubuntu on WSL 2 |
+| Host operating system | Windows 11 |
+| Container platform | Docker Desktop |
+| Container engine | Docker Engine, Linux/amd64 |
+| Linux command-line environment | Ubuntu on WSL 2 |
+| Docker CLI relationship | Windows and WSL clients use the same Docker Desktop daemon |
 
-The Windows Docker CLI and Ubuntu WSL Docker CLI were observed connecting to the same Docker Desktop daemon.
+The WSL environment is not a separate Docker daemon in this setup.
 
-Ubuntu WSL is a Linux command-line workspace, not a second independent Docker host.
+## 3. Main service groups
 
-## 2. Application estate
+The recorded container estate includes:
 
-The documented container environment includes:
+- Reverse proxying.
+- Photo and video management.
+- PostgreSQL and supporting data services.
+- Home automation.
+- Media streaming.
+- Self-hosted application projects.
+- DNS-related services.
+- Dashboard and utility applications.
+- Remote-access infrastructure.
 
-- Caddy.
-- Immich server.
-- [Historical per-service storage and persistence details omitted.]
-- Immich machine learning.
-- Valkey.
-- Apprenticeship Tracker web and API.
-- Home Assistant.
-- SearXNG.
-- Jellyfin.
-- Homepage.
-- Vert.
-- Open WebUI.
-- Pi-hole.
-- Unbound.
-- Twingate Connector.
-- VEMS and other supporting services.
+See [container inventory](container-inventory.md) for the service-level summary.
 
-Detailed images, ports, networks, health checks and storage arrangements are recorded in [Container Inventory](container-inventory.md).
+## 4. Network architecture
 
-## 3. Network architecture
+The documented separation of responsibilities is:
 
-| Function | Component | Current role |
-|---|---|---|
-| Local DNS | UniFi Gateway | Local hostname and DNS resolution |
-| LAN routing | UniFi Gateway | Routes home-network traffic |
-| Reverse proxy | Caddy | HTTP/HTTPS application routing |
-| Remote access | Twingate | Operator-confirmed access to any service on the home network |
-| Remote VPN | UniFi Teleport through WiFiman | Independent remote-access option |
-
-Twingate and UniFi Teleport are separate access methods.
-
-The local network architecture and Caddy upstreams are documented in [Networking and Routing](networking.md).
-
-## 4. Container and deployment management
-
-Docker Compose project discovery identified the documented projects:
-
-- Apprenticeship Tracker.
-- Caddy.
-- Homepage.
-- Immich.
-- Pi-hole.
-- VEMS.
-- Vert.
-
-Five Windows-hosted Compose definitions were validated during the earlier audit. The referenced Pi-hole Compose definition was missing from the recorded location.
-
-Several containers did not have Compose project labels, so their current reproducible deployment definitions require further investigation.
-
-## 5. Immich backup system
-
-The Immich backup system uses Restic 0.19.1 and an encrypted repository on an external Seagate Expansion Drive.
-
-Repository:
-
-`[LOCAL_BACKUP_REPOSITORY_PATH]`
-
-Repository ID prefix:
-
-`[PRIVATE_RESTIC_REPOSITORY_IDENTIFIER]`
-
-Two successful snapshots were confirmed:
-
-| Snapshot | Timestamp | Tags |
-|---|---|---|
-| `7ec7a616` | 1 November 2026, 18:47:33 | `immich`, `initial-full` |
-| `e8d1bd6a` | 1 November 2026, 23:52:05 | `immich`, `daily` |
-
-The initial full backup processed 48,335 files and 197.721 GiB. It stored 135.725 GiB in the repository.
-
-## 6. Backup recovery verification
-
-The backup has been tested beyond the initial Restic snapshot creation.
-
-| Recovery test | Result |
+| Component | Responsibility |
 |---|---|
-| Repository structural check | No errors found |
-| Database dump discovery | Passed |
-| Database dump restoration | Passed |
-| Original/restored SHA-256 comparison | Identical |
-| PostgreSQL database import | Passed |
-| Restored base tables | 72 |
-| Application schemas | 1 |
-| Reported PostgreSQL extensions | 8 |
-| Temporary test environment cleanup | Completed |
+| UniFi gateway | Local DNS and LAN routing |
+| Caddy | HTTP/HTTPS reverse proxy |
+| Twingate | Remote access to services across the home network |
+| UniFi Teleport | Independent remote VPN option |
+| Docker | Application and service containerisation |
 
-The successful PostgreSQL import was performed in an isolated container using the same PostgreSQL image as the live Immich database.
+Twingate is not described as restricted to Caddy-hosted services.
 
-The live database was not modified.
+UniFi Teleport is a separate remote-access option. Neither service should be assumed to depend on the other.
 
-A complete Immich application recovery remains untested.
+## 5. Backup state recorded on 2 November 2026
 
-## 7. Daily backup automation
+The following results were supplied from the backup investigation.
 
-A PowerShell backup script is stored at:
-
-`[WINDOWS_BACKUP_SCRIPT_PATH]`
-
-Logs are written to:
-
-`[WINDOWS_BACKUP_LOG_DIRECTORY]`
-
-The Windows Task Scheduler task is named:
-
-`Immich Daily Restic Backup`
-
-Configured schedule:
-
-| Setting | Value |
+| Item | Recorded result |
 |---|---|
-| Frequency | Daily |
-| Start time | 05:00 |
-| Missed-run handling | Run as soon as possible |
-| Concurrent runs | Prevented |
-| Script logging | Enabled |
-
-The task was previously observed with:
-
-- State: Ready.
-- Last run result: `0`.
-- Next run: 2 November 2026 at 05:00.
-- Missed runs: 0.
-
-Those results reflect an earlier manual task execution, before the latest retention-enabled script was installed.
-
-The updated script includes a strict requirement for a database dump created on the current calendar day. A dry run at 00:11 on 2 November correctly stopped because the latest available database dump still came from 1 November.
-
-The first successful scheduled execution using the latest script remains outstanding.
-
-## 8. Retention configuration
-
-The following Restic policy was applied manually:
-
-| Recovery point | Retention |
-|---|---:|
-| Daily | 7 |
-| Weekly | 4 |
-| Monthly | 12 |
-| Initial full snapshot | Protected by `initial-full` tag |
-
-The retention preview and subsequent manual application preserved both existing snapshots.
-
-The updated PowerShell script includes this retention operation after successful backup verification.
-
-Automatic repository pruning remains disabled.
-
-## 9. Previous storage incident
-
-An earlier full backup failed during writes to the external drive.
-
-Windows recorded Disk Event 153, Disk Event 51 and NTFS Event 50 errors during the failure window.
-
-A subsequent filesystem scan reported no NTFS problems or bad sectors. A later Restic backup completed successfully.
-
-The original cause of the external storage interruption remains unresolved and should be monitored during future runs.
-
-## 10. Current status
-
-| Area | Status |
-|---|---|
-| Windows and Docker infrastructure audit | Documented |
-| Local DNS and network architecture | Documented |
-| Remote-access architecture | Operator-confirmed and documented |
-| Initial Immich backup | Successful |
-| Subsequent Restic snapshot | Successful |
-| Repository structural check | Passed |
-| File restoration | Passed |
-| PostgreSQL restoration | Passed |
-| Manual snapshot retention | Applied |
-| Latest script | Updated |
-| Daily Task Scheduler configuration | Ready |
-| Latest script first scheduled execution | Awaiting confirmation |
-| Full data-pack integrity check | Outstanding |
-| Complete Immich recovery drill | Outstanding |
+| Backup software | Restic 0.19.1 |
+| Scheduled backup | Completed successfully |
+| Third recorded snapshot | `014da08e` |
+| Snapshot time | 2 November 2026, 05:00:12 |
+| Snapshot tags | `immich`, `daily` |
+| Retention operation | Completed at 05:00:37 |
+| Final script exit code | 0 |
+| Snapshots after retention | 3 |
+| Full data-pack read | 9,221 / 9,221 packs |
+| Reported data-pack read errors | None |
 | Automatic pruning | Disabled |
 
-## Related documentation
+These results are historical and operator-confirmed. They are not confirmation that every subsequent scheduled run succeeded.
 
-- [Architecture Overview](architecture-overview.md)
-- [Container Inventory](container-inventory.md)
-- [Networking and Routing](networking.md)
-- [Backup and Recovery](backup-and-recovery.md)
-- [Security Baseline](security-baseline.md)
-- [Known Gaps and Actions](known-gaps-and-actions.md)
-- [Evidence and Method](evidence-and-method.md)
+## 6. Database recovery state
+
+A database dump was restored from the recorded backup.
+
+The original and restored dump hashes matched using SHA-256.
+
+The restored dump was successfully imported into a temporary isolated PostgreSQL test environment.
+
+The test environment was separate from the live database and was removed after testing.
+
+This establishes successful database dump restoration and import under the tested conditions.
+
+It does not establish full Immich application recovery.
+
+## 7. Storage incident
+
+An earlier backup attempt experienced storage-related write errors.
+
+A later filesystem scan reported no filesystem problems and no bad sectors. Subsequent backup operations completed successfully.
+
+The physical cause of the initial issue remains unconfirmed.
+
+## 8. Outstanding items
+
+The following are not represented as completed:
+
+- Full Immich application recovery using restored database and media.
+- Explanation of the 475 additional files reported by an earlier Restic check.
+- Automatic Restic pruning.
+- Confirmation of a tested independent repository-password recovery copy.
+- Establishment of the physical cause of the earlier storage errors.
+- Revalidation of all container security and persistence observations.
+- Complete revalidation of every configured reverse-proxy upstream.
+
+## 9. Interpretation
+
+The strongest verified recovery evidence is the successful database dump restoration, SHA-256 comparison, isolated PostgreSQL import and full Restic data-pack read.
+
+These results are meaningful, but they should not be used to claim that the complete Immich application has passed a disaster-recovery test.
+

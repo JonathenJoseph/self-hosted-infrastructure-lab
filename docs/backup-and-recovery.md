@@ -1,343 +1,218 @@
+
+
 # Backup and Recovery
 
-**Last updated:** 2 November 2026  
-**Backup software:** Restic 0.19.1  
-**Application:** Immich  
-**Repository:** External encrypted Restic repository  
-**Status:** Initial backup and database recovery verified. Daily automation configured; first scheduled run using the latest script pending.
+## 1. Purpose
 
-## 1. Backup architecture
+This document describes the backup strategy used for the self-hosted photo and video environment, the Restic automation, recorded backup results and recovery tests.
 
-The Immich environment uses Restic to create encrypted backups on an external Seagate Expansion Drive.
+The objective is to protect application configuration, media and database exports while maintaining a documented recovery path.
 
-Repository location:
+The evidence in this document is historical. The most recent specific backup results included here were recorded on 1–2 November 2026.
 
-`[LOCAL_BACKUP_REPOSITORY_PATH]`
+## 2. Backup design
 
-Filesystem: NTFS.
+Restic is used to create encrypted backups in an external repository.
 
-Repository version: 2.
-
-Compression: Auto.
-
-The password file is stored separately under the Windows user's LocalAppData directory, with restricted access permissions.
-
-The repository ID prefix is `[PRIVATE_RESTIC_REPOSITORY_IDENTIFIER]`.
-
-## 2. Backup source inventory
-
-The existing Restic snapshot contains six source paths:
-
-| Source | Purpose |
+| Component | Recorded configuration |
 |---|---|
-| `.env` | Immich deployment environment configuration |
-| `Caddyfile` | Reverse-proxy configuration |
-| `PHOTOS + VIDEOS` | Original photo and video library |
-| `caddy-root.crt` | Certificate file |
-| `docker-compose.yml` | Container deployment definition |
-| `media` | Immich-managed data, including database backup files |
+| Backup software | Restic 0.19.1 |
+| Repository type | Encrypted Restic repository |
+| Storage destination | External NTFS-formatted storage |
+| Backup orchestration | PowerShell |
+| Scheduling | Windows Task Scheduler |
+| Consistency support | Volume Shadow Copy Service |
+| Retention | Automated `forget` policy |
+| Physical pruning | Disabled |
 
-All six paths are located under the Immich Docker deployment directory.
+The repository password is stored separately from the public documentation. The local password file is protected using Windows access-control permissions.
 
-The `.env` file and certificate are included in the encrypted backup. Their contents must never be published in this repository.
+A separate, recoverable copy of the repository password should be maintained securely. The evidence recorded for this portfolio does not establish that a tested recovery copy is available.
 
-## 3. Initial full backup
+## 3. Backup scope
 
-The initial full Restic backup completed successfully on 1 November 2026.
+The recorded backup job covers six source areas:
 
-| Metric | Result |
-|---|---:|
-| Snapshot | `7ec7a616` |
-| Tags | `immich`, `initial-full` |
-| Files processed | 48,335 |
-| Directories processed | 30,960 |
-| Source data scanned | 197.721 GiB |
-| Data added to repository | 136.272 GiB |
-| Data stored | 135.725 GiB |
-| Duration | 3 hours, 47 minutes, 13 seconds |
-| VSS source snapshot | Successful |
-| Restic exit code | 0 |
+1. Application environment configuration.
+2. Reverse-proxy configuration.
+3. Photo and video library content.
+4. Certificate material required by the environment.
+5. Container deployment configuration.
+6. Application media and database backup content.
 
-Restic reported:
+Sensitive configuration is included only within the encrypted backup process. It must not be copied into this GitHub repository.
 
-```text
-successfully created snapshot for [c:\]
-processed 48335 files, 197.721 GiB in 3:47:13
-snapshot 7ec7a616 saved
-BACKUP EXIT CODE: 0
-BACKUP COMPLETED SUCCESSFULLY
-```
+The actual local filesystem paths are intentionally omitted from this public document.
 
-The source-side VSS snapshot and the saved Restic snapshot are distinct stages. Both completed successfully in this run.
+## 4. Automation
 
-## 4. Subsequent daily backup
+The PowerShell backup script performs validation before creating a snapshot.
 
-A second snapshot was successfully created in the same repository.
+The recorded validation stages include:
 
-| Metric | Result |
-|---|---|
-| Snapshot | `e8d1bd6a` |
-| Timestamp | 1 November 2026, 23:52:05 |
-| Tags | `immich`, `daily` |
-| Files processed | 48,335 |
-| Source paths | All six expected paths |
-| Restic exit code | 0 |
+- Checking the expected external storage destination.
+- Checking storage health and available capacity.
+- Checking Restic repository configuration.
+- Checking that the repository password is available.
+- Checking that all expected source paths exist.
+- Checking that a database dump for the expected backup date is available.
+- Checking the compressed database dump's integrity.
+- Using Volume Shadow Copy Service support.
+- Creating the backup snapshot.
+- Verifying snapshot details, paths and tags.
+- Running retention only after the backup has passed the script's verification steps.
 
-Both snapshots were subsequently confirmed using:
+The script and logs are stored outside this public repository.
 
-```powershell
-restic snapshots
-```
+## 5. Scheduling and retention
 
-No separate repository was created.
+The recorded Windows Task Scheduler job runs daily at 05:00 host-local time.
 
-## 5. Repository integrity check
+The configured retention policy is:
 
-The following command was executed:
-
-```powershell
-restic check
-```
-
-Results:
-
-- All 25 index files loaded.
-- Both snapshots were checked.
-- Snapshot trees and blobs were checked.
-- No errors were found.
-- Restic reported 475 additional files, likely containing duplicate or unreferenced repository data.
-
-The additional-file warning was non-critical.
-
-No pruning was performed during the integrity check.
-
-A complete data-pack read using `restic check --read-data` has not yet been recorded. The normal repository check should not be described as a full physical read of every stored data pack.
-
-## 6. File restoration test
-
-A PostgreSQL database dump was selected from the second snapshot:
-
-`immich-db-backup-20261101T171904-v3.3.5-pg14.19.sql.gz`
-
-Snapshot used:
-
-`e8d1bd6a`
-
-Restic located the dump under the Immich media backups directory and restored it into a separate local test folder.
-
-### SHA-256 comparison
-
-| Measurement | Result |
-|---|---|
-| Original file size | 97,168,037 bytes |
-| Restored file size | 97,168,037 bytes |
-| Hash algorithm | SHA-256 |
-| Comparison | Identical |
-
-Both files returned:
-
-```text
-0DB89A7CA4DB0474B0051590CE3D3112600EFA2C653120D926192FE77137FF2A
-```
-
-PowerShell returned:
-
-```text
-Identical : True
-```
-
-This proves that the recovered dump was byte-for-byte identical to the original.
-
-## 7. PostgreSQL database restoration test
-
-The recovered SQL dump was imported into a disposable PostgreSQL container.
-
-The test used the same image as the live Immich PostgreSQL service:
-
-`ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0`
-
-The isolated environment used:
-
-- Database name: `immich_db`
-- Database user: `immich`
-- Separate Docker named volume.
-- Docker network mode: `none`.
-- No published host ports.
-- A temporary randomly generated password.
-
-The import was performed with the Immich-compatible search-path transformation and PostgreSQL error handling enabled.
-
-The import completed successfully with exit code `0`.
-
-### Restored database inspection
-
-The query returned:
-
-```text
-immich_db|72|1
-```
-
-This confirmed:
-
-| Database check | Result |
-|---|---|
-| Database name | `immich_db` |
-| Base tables | 72 |
-| Application schemas | 1 |
-| Import exit code | 0 |
-
-The restored database also reported eight extensions:
-
-- `cube`
-- `earthdistance`
-- `pg_trgm`
-- `plpgsql`
-- `unaccent`
-- `uuid-ossp`
-- `vchord`
-- `vector`
-
-The temporary container and dedicated volume were removed after the test.
-
-The live Immich database was not modified.
-
-**Recovery conclusion:** Restic successfully restored the database dump, the restored file matched the original SHA-256 hash, and PostgreSQL accepted the recovered database and exposed its application tables and extensions.
-
-A complete Immich application recovery, including starting the application against a recovered database and checking the associated media, remains outstanding.
-
-## 8. Previous external storage incident
-
-An earlier full backup attempt failed while writing to the Seagate drive.
-
-Restic reported:
-
-```text
-A device which does not exist was specified
-```
-
-Windows recorded Disk Event 153, Disk Event 51 and NTFS Event 50 errors during the failure window.
-
-A subsequent `chkdsk D: /scan` found no filesystem problems and reported zero bad sectors.
-
-A later full backup completed successfully.
-
-The earlier storage interruption has not been conclusively attributed to the cable, USB port, enclosure or physical drive.
-
-See [Immich Backup Failure and Recovery](case-studies/immich-backup-incident.md).
-
-## 9. Daily PowerShell automation
-
-The daily backup script is stored at:
-
-`[WINDOWS_BACKUP_SCRIPT_PATH]`
-
-Logs are stored under:
-
-`[WINDOWS_BACKUP_LOG_DIRECTORY]`
-
-Windows Task Scheduler contains:
-
-`Immich Daily Restic Backup`
-
-| Setting | Value |
-|---|---|
-| Schedule | Daily |
-| Start time | 05:00 |
-| Execution method | Windows PowerShell |
-| Backup method | Restic with Windows VSS |
-| Repository | Existing encrypted repository |
-| Missed start | Run as soon as possible |
-| Concurrent execution | Disabled |
-| Logging | Timestamped log files |
-
-The script checks:
-
-1. Restic executable availability.
-2. Password-file availability.
-3. External drive identity, filesystem, health and remaining capacity.
-4. Existing repository accessibility.
-5. All six source paths.
-6. Availability of a database dump created on the current calendar day.
-7. Minimum database dump size.
-8. Full gzip decompression to check archive integrity.
-9. Restic backup completion.
-10. The new daily snapshot ID, timestamp, tags and source paths.
-11. Retention processing after backup verification.
-
-### Latest script test
-
-A dry-run test on 2 November 2026 at 00:11 failed at the current-day database dump check.
-
-The latest dump available at that time was:
-
-`immich-db-backup-20261101T171904-v3.3.5-pg14.19.sql.gz`
-
-This was the previous day's file. The script correctly refused to proceed.
-
-This was an intentional fail-safe, not a repository or storage failure.
-
-The latest script has not yet completed its first successful scheduled 05:00 run.
-
-## 10. Retention policy
-
-The retention policy has been previewed and applied manually.
-
-| Snapshot category | Retention |
+| Policy | Number retained |
 |---|---:|
 | Daily | 7 |
 | Weekly | 4 |
 | Monthly | 12 |
-| Initial full backup | Protected with `initial-full` tag |
+| Initial full backup | Protected by `initial-full` tag |
 
-The dry-run preview identified both existing snapshots for preservation.
+The script uses Restic retention functionality after a successful backup verification.
 
-The retention operation was then applied manually, and `restic snapshots` subsequently confirmed both snapshots remained present.
+Automatic `prune` is deliberately disabled. No claim is made that physical repository compaction has occurred.
 
-The updated PowerShell script includes automatic retention after a successful new backup and snapshot verification.
+## 6. Recorded backup snapshots
 
-Automatic pruning remains disabled.
+The following snapshot records were supplied for the November 2026 backup investigation.
 
-### Why pruning is separate
+| Snapshot | Recorded date and time | Tags | Description |
+|---|---|---|---|
+| `7ec7a616` | 1 November 2026, 18:47:33 | `immich`, `initial-full` | Initial full backup |
+| `e8d1bd6a` | 1 November 2026, 23:52:05 | `immich`, `daily` | Subsequent daily snapshot |
+| `014da08e` | 2 November 2026, 05:00:12 | `immich`, `daily` | Successful scheduled snapshot |
 
-Restic `forget` manages which snapshots are retained.
+The initial full snapshot recorded:
 
-Restic `prune` physically removes repository data that is no longer needed by retained snapshots.
+- 48,335 files.
+- 30,960 directories.
+- 197.721 GiB scanned.
+- 136.272 GiB added.
+- 135.725 GiB stored.
+- 3 hours, 47 minutes and 13 seconds elapsed.
+- Successful VSS operation.
+- Exit code 0.
 
-Pruning is intentionally not included in the daily task at this stage.
+The scheduled run on 2 November 2026 completed successfully.
 
-## 11. Remaining recovery and operational work
+The subsequent retention operation completed at 05:00:37. The final script exit code was 0, and three snapshots remained after the recorded retention run.
 
-| Task | Status |
+These are operator-confirmed historical results. They have not been independently re-executed as part of this documentation update.
+
+## 7. Repository integrity checks
+
+### Structural repository check
+
+An earlier Restic repository check reported:
+
+- 25 of 25 indexes loaded.
+- 2 of 2 snapshots checked.
+- No errors found.
+
+The same check reported 475 additional files.
+
+The status and origin of those additional files remain unresolved. They have not been assumed to be safe to delete.
+
+### Full data-pack read
+
+A later full data-read test completed successfully:
+
+| Measure | Result |
 |---|---|
-| Initial full backup | Complete |
-| Second daily snapshot | Complete |
-| Repository structural check | Passed |
-| SHA-256 file restore comparison | Passed |
-| PostgreSQL database import | Passed |
-| Restored database table inspection | Passed |
-| Temporary recovery resources | Removed |
-| Manual retention policy | Applied |
-| Task Scheduler configuration | Complete |
-| Latest script dry-run with a current-day database dump | Pending |
-| First successful scheduled run using latest script | Pending |
-| Full data-pack integrity check | Outstanding |
-| Complete Immich application recovery test | Outstanding |
-| Long-term external storage reliability | Monitoring required |
-| Automatic pruning | Deliberately disabled |
+| Packs read | 9,221 / 9,221 |
+| Elapsed time | 1 hour, 57 minutes and 11 seconds |
+| Reported errors | None |
 
-## 12. Security and recovery limitations
+This is positive evidence that the tested repository data packs could be read successfully.
 
-- The Restic repository is encrypted.
-- The repository password must be recoverable independently of the Windows host.
-- The `.env` file and certificate are included in the encrypted repository and must not be committed to GitHub.
-- The live PostgreSQL data directory should not be copied as an ordinary file backup while PostgreSQL is running.
-- The external Seagate drive is connected to the same physical host. It is not an off-site backup.
-- A successful backup and database import do not prove that the complete Immich application can be recovered without further testing.
-- The external storage interruption remains an unresolved reliability concern.
+It does not, by itself, establish that every application-level restore scenario works or explain the earlier additional-file observation.
 
-## Related documentation
+No pruning was performed on the basis of this result.
 
-- [Immich Backup Failure and Recovery](case-studies/immich-backup-incident.md)
-- [Current State](current-state.md)
-- [Known Gaps and Actions](known-gaps-and-actions.md)
-- [Evidence and Method](evidence-and-method.md)
+## 8. Database restore test
+
+A database dump was restored from the recorded Restic backup.
+
+The process included:
+
+1. Selecting the recorded database dump from a backup snapshot.
+2. Restoring the file to a separate test location.
+3. Comparing the original and restored files using SHA-256.
+4. Confirming that the hashes matched.
+5. Starting an isolated PostgreSQL test container.
+6. Importing the restored database.
+7. Checking that the database and expected application tables were present.
+8. Removing the temporary test container and volume.
+
+The test used the same PostgreSQL image version as the live deployment at the time of testing.
+
+The temporary test container used a dedicated volume, had no published host ports and was configured without network access.
+
+The import completed successfully with exit code 0. The live database was not modified.
+
+The successful hash comparison establishes that the restored dump matched the original file tested. The successful import establishes that the dump could be imported into the isolated PostgreSQL test environment.
+
+## 9. Recovery boundary
+
+The following recovery stages have recorded successful results:
+
+| Recovery stage | Recorded result |
+|---|---|
+| Restic backup creation | Successful |
+| Scheduled backup execution | Successful |
+| Automated retention operation | Successful |
+| Full data-pack read | Successful |
+| Database dump restoration | Successful |
+| Original/restored SHA-256 comparison | Match |
+| Isolated PostgreSQL import | Successful |
+| Full Immich application recovery | Not tested |
+
+**Complete Immich application recovery remains untested.**
+
+The outstanding work is to bring up the application against a restored database and restored media, then verify application startup, access to media and normal application functionality.
+
+The current evidence should not be described as a complete disaster-recovery test.
+
+## 10. Earlier storage incident
+
+An earlier backup attempt experienced storage-related write errors.
+
+Windows system logs recorded disk and filesystem-related events during the incident, including Disk and NTFS events.
+
+A later `chkdsk` scan reported no filesystem problems and no bad sectors. Subsequent backup operations succeeded.
+
+The physical cause of the original failure was not established.
+
+The incident is documented separately in the [Immich backup incident case study](case-studies/immich-backup-incident.md).
+
+## 11. Remaining limitations
+
+The following items remain open:
+
+- Complete Immich application recovery has not been demonstrated.
+- The cause of the earlier storage-related errors remains unconfirmed.
+- The 475 additional Restic files remain unexplained.
+- Automatic pruning remains disabled.
+- A tested independent recovery copy of the repository password is not established by the available evidence.
+- Future scheduled runs must be checked rather than assumed successful.
+
+## 12. Operational safety
+
+The following principles apply:
+
+- Do not delete backup snapshots simply because an integrity check reports additional files.
+- Do not enable pruning without understanding the repository state and having a verified recovery path.
+- Do not test restores against the live database.
+- Do not store repository passwords or database dumps in the public repository.
+- Do not claim a complete application recovery based only on a successful database import.
+- Revalidate external storage identity and health before running backup or retention operations.
+

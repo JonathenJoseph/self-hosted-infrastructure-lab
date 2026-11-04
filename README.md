@@ -1,176 +1,147 @@
+
+
 # Self-Hosted Infrastructure Lab
 
-> A student-built infrastructure portfolio exploring containerisation, networking, systems administration, security and data protection.
+A practical infrastructure portfolio documenting the design, operation, troubleshooting and recovery of a self-hosted environment built around Windows 11, Docker Desktop, WSL 2 and a collection of containerised services.
 
-This repository documents a practical home lab that I build, operate, troubleshoot and improve alongside my studies.
+The project focuses on understanding how infrastructure components work together, documenting operational decisions, investigating failures and testing recovery procedures.
 
-It demonstrates hands-on experience with Docker, Windows, Linux, networking, reverse proxies, remote access, persistent storage, backup automation and recovery testing.
+It is a **documentation-led portfolio**. It does not contain the live deployment configuration, credentials or private operational evidence.
 
-The portfolio is designed to demonstrate skills relevant to IT infrastructure, systems administration, networking, DevOps and junior platform operations roles.
-
-This is a personal learning environment, not an enterprise production deployment. Technical claims are supported by observed configuration, test results or explicitly identified operator confirmation.
-
----
-
-## Infrastructure overview
-
-| Component | Technology |
-|---|---|
-| Physical host | HP Elite Mini 800 G9 |
-| Operating system | Windows 11 |
-| Container platform | Docker Desktop |
-| Linux environment | Ubuntu on WSL 2 |
-| Container engine | Docker Engine |
-| Reverse proxy | Caddy |
-| Local DNS and LAN routing | UniFi Gateway |
-| Remote access | Twingate and UniFi Teleport through WiFiman |
-| Backup software | Restic |
-| Database | PostgreSQL 14 |
-| Backup destination | External Seagate storage |
-| Automation | PowerShell and Windows Task Scheduler |
-| Documentation | Markdown and Mermaid |
-
-## Network and remote access
-
-The network architecture separates local name resolution, application routing and remote connectivity.
-
-- **UniFi Gateway:** handles local DNS records, hostname resolution and LAN routing.
-- **Caddy:** receives HTTP/HTTPS requests and reverse-proxies them to configured applications.
-- **Twingate:** provides remote access to any service on the home network, as confirmed by the operator.
-- **UniFi Teleport:** provides an independent remote VPN access option through WiFiman.
-
-Twingate and Teleport are separate remote-access methods and do not need to operate together.
-
-See [Architecture Overview](docs/architecture-overview.md) and [Networking and Routing](docs/networking.md).
-
-## Hosted services
-
-The documented environment includes:
-
-| Category | Services |
-|---|---|
-| Reverse proxy | Caddy |
-| Photos and videos | Immich |
-| Database | PostgreSQL |
-| Home automation | Home Assistant |
-| Media management | Jellyfin |
-| Search | SearXNG |
-| Dashboard | Homepage |
-| File conversion | Vert |
-| AI interface | Open WebUI |
-| DNS | Pi-hole and Unbound |
-| Remote access | Twingate Connector |
-| Application development | Apprenticeship Tracker |
-| Other projects | VEMS and supporting services |
-
-The container inventory documents service images, ports, health checks, networks and storage observations.
-
-## Selected technical achievements
-
-### Docker and infrastructure discovery
-
-- Inspected containers, images, persistent volumes, mounts and network memberships.
-- Mapped Compose projects and identified services without recoverable deployment definitions.
-- Distinguished the Ubuntu WSL Docker CLI from the Docker Desktop daemon it controls.
-- Investigated container health, restart behaviour and service dependencies.
-
-### Network architecture
-
-- Documented UniFi local DNS and LAN routing.
-- Mapped Caddy reverse-proxy routes to Docker services and host-published ports.
-- Reviewed Docker bridge network membership and exposed host ports.
-- Documented two independent remote-access paths through Twingate and UniFi Teleport.
+## Project highlights
 
 ### Backup and recovery engineering
 
-Established an encrypted Restic repository on external storage and completed an initial full backup.
+The main case study documents an Immich backup and recovery investigation using Restic and PostgreSQL.
 
-The initial snapshot:
+Recorded achievements include:
 
-- Processed 48,335 files.
-- Scanned 197.721 GiB.
-- Stored 135.725 GiB in the repository.
-- Completed with exit code `0`.
+- Implementing encrypted backups to external storage.
+- Automating scheduled backups and retention.
+- Validating backup inputs and database dump integrity.
+- Investigating storage-related backup failures.
+- Comparing original and restored database dump hashes using SHA-256.
+- Importing a restored PostgreSQL database into an isolated test environment.
+- Completing a full Restic data-pack read with 9,221 of 9,221 packs read and no reported errors.
 
-A subsequent daily snapshot was also created.
+Complete Immich application recovery, including application startup against the restored database and verification of media availability, remains untested.
 
-### Recovery testing
+[Read the backup and recovery case study](docs/case-studies/immich-backup-incident.md).
 
-The recovery process was tested beyond simply checking that a backup job completed.
+### Containerisation and infrastructure
 
-- Restored a PostgreSQL database dump from Restic.
-- Compared the original and restored file using SHA-256.
-- Confirmed that both files were byte-for-byte identical.
-- Imported the recovered dump into an isolated PostgreSQL 14 container.
-- Verified 72 base tables and eight PostgreSQL extensions.
-- Removed the temporary test container and volume without modifying the live Immich database.
+The environment uses Docker Desktop on Windows 11, with Ubuntu on WSL 2 acting as a client of the same Docker daemon.
 
-This establishes a tested database restoration path. A complete Immich application recovery remains outstanding.
+The documented services include:
 
-### Backup automation
+- Reverse proxying with Caddy.
+- Photo and video management with Immich.
+- Media services and home automation.
+- DNS-related services.
+- Self-hosted web applications.
+- Remote-access services.
+- Supporting infrastructure and monitoring tools.
 
-Created a PowerShell backup script and configured Windows Task Scheduler to run it daily at 05:00.
+The inventory is a point-in-time record, not a promise that every service is currently running.
 
-The script includes:
+### Networking and remote access
 
-- External drive checks.
-- Existing repository validation.
-- Database dump freshness and gzip integrity checks.
-- Windows Volume Shadow Copy integration.
-- Snapshot verification.
-- Logging and failure handling.
-- Automatic snapshot retention after successful backup verification.
+The documentation distinguishes between infrastructure responsibilities:
 
-The first scheduled execution using the latest retention-enabled script is still awaiting confirmation.
+- **UniFi:** local DNS records and LAN routing.
+- **Caddy:** HTTP/HTTPS application-level reverse proxying.
+- **Twingate:** remote access configured to reach services across the home network.
+- **UniFi Teleport:** a separate remote VPN option through WiFiman.
 
-## Selected case studies
+Twingate and UniFi Teleport are independent remote-access methods. They do not need to be used together.
 
-| Case study | Technical focus |
-|---|---|
-| [Immich backup failure and recovery](docs/case-studies/immich-backup-incident.md) | Storage troubleshooting, Restic, PostgreSQL recovery and automation |
-| [Architecture overview](docs/architecture-overview.md) | Host architecture, application services and data flow |
-| [Security baseline](docs/security-baseline.md) | Firewall configuration, container privileges and persistent-state risks |
-| [Networking and routing](docs/networking.md) | UniFi DNS, Docker networks, Caddy and remote access |
+## Architecture
 
-## Repository documentation
+The environment can be understood in four broad layers:
+
+1. Home networking and remote access.
+2. Windows and Docker Desktop host infrastructure.
+3. Containerised applications and supporting services.
+4. Persistent data and encrypted backup storage.
+
+See the [architecture overview](docs/architecture-overview.md) and [current architecture diagram](diagrams/current-architecture.mmd).
+
+## Repository navigation
 
 | Document | Purpose |
 |---|---|
-| [Current State](docs/current-state.md) | Point-in-time infrastructure and operational status |
-| [Architecture Overview](docs/architecture-overview.md) | Host, container and storage architecture |
-| [Container Inventory](docs/container-inventory.md) | Container images, ports, health and persistence |
-| [Networking and Routing](docs/networking.md) | UniFi, Twingate, Teleport, Docker networking and Caddy |
-| [Backup and Recovery](docs/backup-and-recovery.md) | Backup implementation, verification and recovery testing |
-| [Security Baseline](docs/security-baseline.md) | Security findings and recommendations |
-| [Known Gaps and Actions](docs/known-gaps-and-actions.md) | Outstanding work and technical risks |
-| [Evidence and Method](docs/evidence-and-method.md) | Discovery methods and confidence classifications |
-| [Immich Backup Case Study](docs/case-studies/immich-backup-incident.md) | Detailed technical investigation |
-| [Current Architecture Diagram](diagrams/current-architecture.mmd) | Mermaid architecture source |
-| [Docker Network Topology](diagrams/docker-network-topology.mmd) | Docker network membership |
+| [Architecture overview](docs/architecture-overview.md) | High-level system design and component responsibilities |
+| [Current state](docs/current-state.md) | Recorded environment state and known limitations |
+| [Container inventory](docs/container-inventory.md) | Services and their roles |
+| [Networking](docs/networking.md) | DNS, routing, proxying and remote access |
+| [Security baseline](docs/security-baseline.md) | Security principles, observations and improvement areas |
+| [Backup and recovery](docs/backup-and-recovery.md) | Restic design, automation, retention and recovery testing |
+| [Backup incident case study](docs/case-studies/immich-backup-incident.md) | Storage investigation and recovery evidence |
+| [Evidence and method](docs/evidence-and-method.md) | How observations, tests and limitations are recorded |
+| [Known gaps and actions](docs/known-gaps-and-actions.md) | Outstanding technical work and limitations |
+| [Security policy](SECURITY.md) | Reporting a security concern |
 
-## Working approach
+## Technology overview
 
-The portfolio follows an evidence-led approach:
+| Area | Technology |
+|---|---|
+| Host operating system | Windows 11 |
+| Container platform | Docker Desktop |
+| Linux environment | Ubuntu on WSL 2 |
+| Reverse proxy | Caddy |
+| Photo and video management | Immich |
+| Backup software | Restic |
+| Database | PostgreSQL |
+| Network infrastructure | UniFi |
+| Remote access | Twingate and UniFi Teleport |
+| Documentation diagrams | Mermaid |
 
-- **Verified:** supported by command output or an inspected configuration.
-- **User-confirmed:** explicitly confirmed by the operator.
-- **Inferred:** supported by observations but not directly demonstrated.
-- **Open:** requires further testing or confirmation.
-- **Deferred:** intentionally outside the current scope.
+## Evidence and accuracy
 
-This distinction prevents configuration observations from being presented as proven operational outcomes.
+This portfolio distinguishes between:
 
-## Security and privacy
+- Directly observed configuration or behaviour.
+- Results reported by the system operator.
+- Tests that were performed and their recorded outcomes.
+- Inferences that have not been independently confirmed.
+- Work that has not yet been tested.
 
-This is a sanitised portfolio.
+A successful database restore is not described as a complete application recovery. A successful backup is not treated as proof that every possible recovery scenario works.
 
-It intentionally excludes:
+The backup evidence in this repository includes results recorded on 1–2 November 2026. These are historical test records, not a live status feed.
 
-- Passwords and API keys.
-- Private keys and certificate contents.
-- Raw database dumps.
-- Restic repository files and passwords.
-- Unredacted environment files.
-- Private network addresses and sensitive hostnames.
+See [Evidence and method](docs/evidence-and-method.md) for the evidence conventions and limitations.
 
-The repository is being maintained privately during review. Any public release will receive a separate security and privacy review.
+## Scope and publication boundaries
+
+This is a sanitised, documentation-led portfolio.
+
+The repository deliberately excludes:
+
+- Deployment environment files and credentials.
+- Private keys and sensitive certificates.
+- Raw backup repositories and database dumps.
+- Internal addressing and unnecessary network configuration.
+- Detailed firewall rules and private access-control configuration.
+- Private screenshots, logs and operational records.
+
+Infrastructure names and relationships are presented at a level intended to explain engineering decisions without publishing an unnecessary map of the home network.
+
+## Current limitations
+
+The project is not presented as an enterprise production environment or a fully validated disaster-recovery platform.
+
+Known limitations include:
+
+- Complete Immich application recovery has not been tested.
+- The cause of an earlier storage-related backup failure has not been established.
+- An earlier Restic check reported additional files whose status remains unresolved.
+- Automatic Restic pruning remains disabled.
+- Some container security and persistence improvements remain under review.
+
+These limitations are documented rather than hidden.
+
+## Project status
+
+This repository records practical work and its supporting evidence. It should be read as a technical portfolio and an evolving record of an environment, not as a guarantee of current service availability.
+

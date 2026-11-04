@@ -1,226 +1,143 @@
-# Architecture Overview
 
-**Last updated:** 2 November 2026  
-**Scope:** Windows host, Docker Desktop, WSL 2, home networking and persistent application data.
+
+# Architecture Overview
 
 ## 1. Purpose
 
-This document describes the current infrastructure architecture and how its components interact.
+This document describes the high-level architecture of the self-hosted environment.
 
-It covers:
+It explains the responsibilities of the home network, Windows host, Docker platform, application services and backup system.
 
-- Physical host and operating system.
-- Docker Desktop and WSL 2.
-- Local DNS and application routing.
-- Remote connectivity.
-- Application services and Docker networks.
-- Persistent data and external backups.
+The diagram and descriptions are intentionally simplified for public presentation. They are not a complete network map or a deployment specification.
 
-The diagram describes the observed environment, not a proposed future design.
+## 2. Architecture at a glance
 
-## 2. High-level architecture
+The environment is organised into five broad areas:
 
-The infrastructure has four principal layers:
+1. Remote access and home networking.
+2. Windows host and Docker Desktop.
+3. Application routing and containerised services.
+4. Application data and supporting databases.
+5. Encrypted backup and recovery.
 
-| Layer | Components | Responsibility |
-|---|---|---|
-| Home network | UniFi Gateway, switches and access points | Local DNS, hostname resolution and LAN routing |
-| Host | HP Elite Mini 800 G9, Windows 11 | Physical compute, host firewall and storage |
-| Container platform | Docker Desktop, Linux Docker Engine, WSL 2 | Runs application and infrastructure containers |
-| Remote access | Twingate and UniFi Teleport | Allows remote connectivity to home-network services |
+See [current architecture](../diagrams/current-architecture.mmd).
 
-## 3. Architecture flow
+## 3. Host and container platform
 
-```mermaid
-flowchart TB
-    HOME["Home network clients"] --> DNS["UniFi local DNS and LAN routing"]
-    DNS --> FW["Windows host firewall"]
-    FW --> CADDY["Caddy reverse proxy"]
-    CADDY --> APPS["Self-hosted applications"]
+The primary host is a Windows 11 system running Docker Desktop.
 
-    REMOTE["Remote device"] --> TW["Twingate client"]
-    TW --> CONNECTOR["Twingate Connector"]
-    CONNECTOR --> ALL_SERVICES["Any service on home network"]
+Docker Desktop provides the container runtime used by the environment.
 
-    REMOTE --> WIFI["WiFiman - Teleport VPN"]
-    WIFI --> DNS
+Ubuntu on WSL 2 is also used as a command-line environment. The Windows Docker CLI and Ubuntu WSL Docker CLI communicate with the same Docker Desktop daemon.
 
-    HOST["Windows 11 host"] --> DOCKER["Docker Desktop"]
-    WSL["Ubuntu WSL 2"] -.-> DOCKER
+They are therefore two client environments using one container engine, not two independent Docker installations.
 
-    IMMICH["Immich"] --> RESTIC["Encrypted Restic repository"]
-    RESTIC --> SNAPSHOT["Verified database recovery path"]
-```
+This distinction matters when interpreting container listings, resource use and Docker network information.
 
-The Twingate connection represents operator-confirmed access to any service on the home network. UniFi Teleport is a separate VPN option.
+## 4. Home networking
 
-## 4. Host and container runtime
+The UniFi gateway provides local DNS functionality and LAN routing.
 
-The host is an HP Elite Mini 800 G9 running Windows 11.
+These responsibilities are separate from application-level HTTP and HTTPS routing.
 
-The container platform is Docker Desktop 4.95.0 with Docker Engine 29.8.2, using the Linux/amd64 environment.
+The architecture does not publish private IP addressing, Wi-Fi configuration or detailed firewall rules.
 
-Ubuntu runs under WSL 2 and provides a Linux command-line workspace.
+## 5. Application routing
 
-The Windows Docker CLI and Ubuntu WSL Docker CLI were observed communicating with the same Docker Desktop daemon. The matching Docker server ID established that Ubuntu WSL is a client environment for that daemon, not a second independent Docker host.
+Caddy acts as the HTTP/HTTPS reverse proxy.
 
-## 5. Local DNS and routing
+It handles application-level routing to configured services. This is distinct from the gateway's DNS and LAN-routing responsibilities.
 
-The home network uses the UniFi Gateway for local DNS records, hostname resolution and LAN routing.
+A configured proxy route does not, by itself, prove that the upstream service is currently reachable or healthy.
 
-The local web request flow is:
+The documentation therefore distinguishes configured relationships from independently tested connectivity.
 
-1. A client requests resolution of a local hostname.
-2. The UniFi Gateway resolves the configured local record.
-3. The hostname resolves to the relevant host LAN address.
-4. The client sends an HTTP or HTTPS request.
-5. Caddy receives the request on the Windows host's published ports 80 or 443.
-6. Caddy forwards it to the configured application upstream.
+## 6. Containerised applications
 
-The responsibilities are distinct:
+The environment contains several application and infrastructure categories:
 
-- **UniFi:** DNS and network routing.
-- **Caddy:** HTTP/HTTPS reverse proxy and application-level routing.
-- **Docker:** Container execution and internal networking.
+- Photo and video management.
+- Databases and application data services.
+- Home automation.
+- Media streaming.
+- Search and web utilities.
+- Self-hosted application projects.
+- Dashboard and support services.
+- Remote-access infrastructure.
 
-The actual local hostname values and LAN addresses are omitted from this portfolio.
+The detailed point-in-time inventory is maintained in [container inventory](container-inventory.md).
 
-## 6. Remote access architecture
+## 7. Remote access
 
-Two independent methods provide remote connectivity.
+Two independent remote-access options are documented:
 
-### Twingate
+**Twingate**
 
-The Twingate Connector provides remote-access connectivity; historical container network mode is omitted.
+Twingate is configured to provide access to services across the home network. It is not described as being limited to applications routed through Caddy.
 
-The operator has confirmed that Twingate provides access to any service on the home network.
+**UniFi Teleport**
 
-This is documented as a user-confirmed capability. Connector credentials, tokens and private configuration are excluded from the repository.
+UniFi Teleport, accessed through WiFiman, is a separate remote VPN option.
 
-### UniFi Teleport
+These options are independent. The architecture does not require both to be active simultaneously.
 
-UniFi Teleport provides an alternative remote VPN connection through the WiFiman client.
+Exact connector configuration, access resources and authentication details are intentionally excluded.
 
-The remote device establishes a Teleport connection to the UniFi Gateway. Network access then follows the gateway's configured policies.
+## 8. Data and backup architecture
 
-Twingate and Teleport are independent remote-access methods.
+Application data and configuration are backed up using Restic to an encrypted external repository.
 
-## 7. Caddy reverse proxy
+The recorded backup process includes:
 
-Caddy is the primary HTTP/HTTPS reverse proxy.
+- Validation of the external backup destination.
+- Validation of the repository and password configuration.
+- Validation of backup source paths.
+- Validation of a recent database dump.
+- Database dump compression-integrity checking.
+- Volume Shadow Copy Service support for backup consistency.
+- Snapshot verification.
+- Automated retention after successful backup verification.
 
-The main configuration imports site-specific Caddy snippets. The observed configuration includes routes to:
+The recorded retention configuration is:
 
-| Application | Configured upstream |
-|---|---|
-| Apprenticeship Tracker web | `web:80` |
-| Home Assistant | `homeassistant:8123` |
-| Homepage | `[DOCKER_HOST_GATEWAY_ALIAS]:3001` |
-| Jellyfin | `[DOCKER_HOST_GATEWAY_ALIAS]:8096` |
-| Immich | `[DOCKER_HOST_GATEWAY_ALIAS]:2283` |
-| SearXNG | `[DOCKER_HOST_GATEWAY_ALIAS]:8080` |
-| Vert | `[DOCKER_HOST_GATEWAY_ALIAS]:3005` |
-| Open WebUI | `[DOCKER_HOST_GATEWAY_ALIAS]:3000` |
-| Kali route | `[DOCKER_HOST_GATEWAY_ALIAS]:8088`, unresolved |
+| Retention category | Policy |
+|---|---:|
+| Daily | 7 |
+| Weekly | 4 |
+| Monthly | 12 |
+| Initial full backup | Protected by tag |
 
-The Caddy configuration passed validation. Validation confirms that the configuration can be parsed and adapted. It does not establish that every upstream is reachable at every moment.
+Automatic pruning remains disabled.
 
-The `ollama` site snippet currently points to the Open WebUI host-published port in the captured inventory. Its route label alone does not establish that it serves the Ollama API.
+Three snapshots were recorded after the retention run on 2 November 2026. This is a historical evidence point, not a claim about the number of snapshots currently stored.
 
-## 8. Application architecture
+See [backup and recovery](backup-and-recovery.md).
 
-### Immich
+## 9. Recovery architecture
 
-The Immich application group contains:
+The database recovery work used an isolated PostgreSQL test environment.
 
-- Immich server.
-- PostgreSQL database.
-- Machine-learning service.
-- Valkey cache service.
+The restored database was imported into a temporary container using a dedicated temporary volume. The test environment had no network connection and no published host ports.
 
-The containers share the Immich Docker network.
+The live database was not used as the restore target.
 
-The original photo/video library and managed media are stored in host-backed directories. PostgreSQL uses a separate host-backed data directory.
+The database import and hash comparison succeeded. Full Immich application recovery has not yet been tested.
 
-### Apprenticeship Tracker
+## 10. Architecture limitations
 
-The project has separate web and API containers.
+The following distinctions are important:
 
-The application has separate web and API components; exact network membership and host-port details are omitted.
+- A configured route is not proof of successful application connectivity.
+- A published container port is not proof of public internet exposure.
+- A successful database import is not proof of complete application recovery.
+- A successful Restic data-pack read is not proof that every application-level recovery scenario works.
+- A diagram represents documented relationships, not live monitoring.
 
-### Other services
+## 11. Related documentation
 
-The wider service environment includes:
+- [Networking](networking.md)
+- [Container inventory](container-inventory.md)
+- [Security baseline](security-baseline.md)
+- [Backup and recovery](backup-and-recovery.md)
+- [Known gaps and actions](known-gaps-and-actions.md)
 
-- Home Assistant.
-- Jellyfin.
-- Homepage.
-- SearXNG.
-- Vert.
-- Open WebUI.
-- Pi-hole.
-- Unbound.
-- Twingate Connector.
-- VEMS and other application workloads.
-
-## Historical Docker network topology details omitted## 10. Persistent storage and backup architecture
-
-The environment uses both Windows bind mounts and Docker named volumes.
-
-Important storage patterns include:
-- [Historical per-service storage and persistence details omitted.]
-- Immich managed media: host-backed directory.
-- PostgreSQL: separate host-backed database directory.
-- Immich machine-learning model cache: Docker named volume.
-- Open WebUI application data: Docker named volume.
-- [Historical per-service storage and persistence details omitted.]
-- Home Assistant configuration: host directory.
-- Pi-hole: no Docker mounts observed during the audit.
-
-The Pi-hole configuration and database files therefore require special care before container recreation.
-
-### Restic backup
-
-The Immich backup process uses Restic 0.19.1 and an encrypted repository on an external Seagate drive.
-
-Two snapshots were confirmed:
-
-| Snapshot | Purpose |
-|---|---|
-| `7ec7a616` | Initial full backup |
-| `e8d1bd6a` | Subsequent daily backup |
-
-The initial backup processed 48,335 files and 197.721 GiB. It stored 135.725 GiB in the repository.
-
-A database dump was successfully restored from the repository, compared against its original SHA-256 hash, and imported into an isolated PostgreSQL 14 instance.
-
-A complete Immich application restore has not yet been performed.
-
-## 11. Outstanding architecture concerns
-
-The following matters remain open:
-
-- Pi-hole's active upstreams point to public DNS rather than the separately running Unbound service.
-- Pi-hole has no persistent Docker mounts.
-- A Kali-labelled Caddy upstream remains unresolved.
-- The Open WebUI upstream is labelled `ollama` in Caddy.
-- Several containers publish ports on all host interfaces.
-- Complete application recovery has not been demonstrated.
-- External storage reliability needs continued observation following the earlier I/O interruption.
-
-## 12. Diagram and evidence conventions
-
-- Solid arrows represent observed configurations or confirmed relationships.
-- Dashed arrows represent unresolved or pending relationships.
-- Operator-confirmed facts are identified explicitly.
-- Network membership does not prove actual application traffic.
-- Private hostnames, IP addresses, credentials and certificate contents are excluded.
-
-## Related documentation
-
-- [Container Inventory](container-inventory.md)
-- [Networking and Routing](networking.md)
-- [Backup and Recovery](backup-and-recovery.md)
-- [Security Baseline](security-baseline.md)
-- [Known Gaps and Actions](known-gaps-and-actions.md)
-- [Evidence and Method](evidence-and-method.md)

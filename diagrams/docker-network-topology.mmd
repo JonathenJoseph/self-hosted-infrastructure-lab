@@ -1,44 +1,70 @@
-flowchart LR
-    N_CADDY["[DOCKER_NETWORK_1]"]
-    N_IMMICH["[DOCKER_NETWORK_2]"]
-    N_APP["[DOCKER_NETWORK_3]"]
-    N_HOME["[DOCKER_NETWORK_4]"]
-    N_BRIDGE["bridge"]
-    N_PI["[DOCKER_NETWORK_5]"]
-    N_HOST["Network mode details omitted"]
+flowchart TB
+    subgraph ProxyLayer["Reverse proxy layer"]
+        Caddy["Caddy"]
+    end
 
-    CADDY["caddy"]
-    WEB["[CONTAINER_ROLE_WEB]"]
-    API["[CONTAINER_ROLE_API]"]
-    HA["homeassistant"]
-    JELLY["jellyfin"]
-    IMMICH["[CONTAINER_ROLE_IMMICH]"]
-    PG["[CONTAINER_ROLE_DATABASE]"]
-    ML["[CONTAINER_ROLE_PROCESSOR]"]
-    VALKEY["[CONTAINER_ROLE_CACHE] / Valkey"]
-    HOME["homepage"]
-    SEARCH["searxng"]
-    WEBUI["open-webui"]
-    PIHOLE["pihole"]
-    UNBOUND["unbound"]
-    TWINGATE["twingate connector"]
-    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted    %% Historical container-to-network membership omitted
-    %% Historical container-to-network membership omitted
-    classDef network fill:#eaf2ff,stroke:#4776b8,color:#17365d;
-    classDef service fill:#f5f5f5,stroke:#666,color:#222;
-    class N_CADDY,N_IMMICH,N_APP,N_HOME,N_BRIDGE,N_PI,N_HOST network;
-    class CADDY,WEB,API,HA,JELLY,IMMICH,PG,ML,VALKEY,HOME,SEARCH,WEBUI,PIHOLE,UNBOUND,TWINGATE service;
+    subgraph ConfiguredRoutes["Configured application routes"]
+        ApprenticeshipWeb["Apprenticeship Tracker Web"]
+        HomeAssistant["Home Assistant"]
+        Jellyfin["Jellyfin"]
+        Homepage["Homepage"]
+        Immich["Immich Server"]
+        SearXNG["SearXNG"]
+        Vert["Vert"]
+        OpenWebUI["Open WebUI"]
+    end
+
+    Caddy -. "Configured route" .-> ApprenticeshipWeb
+    Caddy -. "Configured route" .-> HomeAssistant
+    Caddy -. "Configured route" .-> Jellyfin
+    Caddy -. "Configured route" .-> Homepage
+    Caddy -. "Configured route" .-> Immich
+    Caddy -. "Configured route" .-> SearXNG
+    Caddy -. "Configured route" .-> Vert
+    Caddy -. "Configured route" .-> OpenWebUI
+
+    subgraph ApprenticeshipGroup["Apprenticeship Tracker application"]
+        ApprenticeshipWeb
+        ApprenticeshipAPI["Apprenticeship Tracker API"]
+
+        ApprenticeshipWeb --> ApprenticeshipAPI
+    end
+
+    subgraph ImmichGroup["Immich application and data services"]
+        Immich
+        PostgreSQL["PostgreSQL"]
+        MachineLearning["Machine Learning service"]
+        Valkey["Valkey"]
+
+        Immich --> PostgreSQL
+        Immich --> MachineLearning
+        Immich --> Valkey
+    end
+
+    subgraph DNSGroup["DNS-related services"]
+        PiHole["Pi-hole"]
+        PublicDNS["Public DNS resolvers"]
+        Unbound["Unbound<br/>Separate DNS service"]
+
+        PiHole --> PublicDNS
+        Unbound
+    end
+
+    subgraph OtherServices["Other infrastructure"]
+        Twingate["Twingate Connector"]
+        VEMS["VEMS and supporting services"]
+    end
+
+    Legend["Dashed arrows represent configured proxy routes.<br/>They do not guarantee current upstream reachability.<br/>Groups are logical service relationships, not exact Docker network membership."]
+
+    classDef proxy fill:#e8eef7,stroke:#506784,color:#172b4d
+    classDef apps fill:#e8f3ec,stroke:#4d8062,color:#173c25
+    classDef data fill:#fff2d8,stroke:#a77b2e,color:#513b10
+    classDef utility fill:#f0e9f7,stroke:#80649b,color:#352347
+    classDef note fill:#f3f3f3,stroke:#888,color:#333
+
+    class Caddy proxy
+    class ApprenticeshipWeb,ApprenticeshipAPI,HomeAssistant,Jellyfin,Homepage,Immich,SearXNG,Vert,OpenWebUI apps
+    class PostgreSQL,MachineLearning,Valkey data
+    class PiHole,PublicDNS,Unbound,Twingate,VEMS utility
+    class Legend note

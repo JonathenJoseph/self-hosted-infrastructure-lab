@@ -1,104 +1,69 @@
 flowchart TB
+    subgraph Remote["Remote access options"]
+        RemoteDevice["Remote devices"]
+        Twingate["Twingate<br/>Remote access"]
+        Teleport["UniFi Teleport<br/>Remote VPN option"]
 
-    subgraph REMOTE["Remote access outside the home"]
-        REMOTE_DEVICE["Remote device"]
-        TW_CLIENT["Twingate client"]
-        WIFI_CLIENT["WiFiman - UniFi Teleport"]
+        RemoteDevice --> Twingate
+        RemoteDevice --> Teleport
     end
 
-    subgraph HOME_NET["Home network - UniFi"]
-        UGW["UniFi Gateway - local DNS and LAN routing"]
-        LAN_CLIENT["Home network clients"]
-        SWITCH["UniFi switch and access points"]
+    subgraph HomeNetwork["Home network"]
+        Gateway["UniFi gateway<br/>Local DNS and LAN routing"]
     end
 
-    subgraph HOST["HP Elite Mini 800 G9 - Windows 11"]
-        FW["Windows Defender Firewall"]
+    Twingate -. "Independent access path" .-> Gateway
+    Teleport -. "Independent access path" .-> Gateway
 
-        subgraph WSL["WSL 2"]
-            UBUNTU["Ubuntu - Docker CLI"]
-        end
+    subgraph Host["Self-hosted host platform"]
+        Windows["Windows 11 host"]
+        DockerDesktop["Docker Desktop"]
+        DockerEngine["Shared Docker daemon"]
+        WSL["Ubuntu on WSL 2<br/>Docker CLI client"]
 
-        subgraph DOCKER["Docker Desktop - Linux Docker Engine"]
-            CADDY["Caddy reverse proxy - TCP 80 and 443"]
-    TWIN["Twingate Connector"]
-            subgraph APPS["Application containers and services"]
-                WEB["Apprenticeship Tracker web"]
-                API["Apprenticeship Tracker API"]
-                HA["Home Assistant"]
-                JELLY["Jellyfin"]
-                HOMEPAGE["Homepage"]
-                IMMICH["Immich server"]
-                PG["Immich PostgreSQL"]
-                ML["Immich machine learning"]
-                VALKEY["Valkey"]
-                SEARCH["SearXNG"]
-                VERT["Vert"]
-                WEBUI["Open WebUI"]
-                PI["Pi-hole"]
-                UNBOUND["Unbound"]
-                OTHER["Other documented services"]
-            end
-        end
+        Windows --> DockerDesktop
+        DockerDesktop --> DockerEngine
+        WSL -->|"Uses same daemon"| DockerEngine
     end
 
-    subgraph STORAGE["Persistent data and backup"]
-    HOSTDATA["Host storage (mount details omitted)"]
-        VOLUMES["Docker named volumes"]
-        RESTIC["Encrypted Restic repository on external Seagate drive"]
-        SNAPSHOT["Initial snapshot 7ec7a616"]
-        DAILY["Daily snapshot e8d1bd6a"]
+    Gateway --> Windows
+
+    subgraph Applications["Containerised services"]
+        Caddy["Caddy<br/>HTTP and HTTPS reverse proxy"]
+        Immich["Immich application"]
+        ImmichData["PostgreSQL and supporting services"]
+        OtherApps["Other self-hosted applications"]
+        DNS["DNS-related services"]
+
+        Immich --> ImmichData
     end
 
-    %% Local DNS and reverse-proxy flow
-    LAN_CLIENT -->|Local DNS query| UGW
-    UGW -.->|Configured local hostname resolution| LAN_CLIENT
-    LAN_CLIENT --> SWITCH
-    SWITCH -->|HTTP or HTTPS request| FW
-    FW --> CADDY
+    DockerEngine --> Caddy
+    DockerEngine --> Immich
+    DockerEngine --> OtherApps
+    DockerEngine --> DNS
 
-    %% Independent remote access paths
-    REMOTE_DEVICE --> TW_CLIENT
-    TW_CLIENT -->|Remote private access| TWIN
-    TWIN -->|Operator-confirmed access to any home-network service| OTHER
+    Caddy -. "Configured application routes" .-> Immich
+    Caddy -. "Configured application routes" .-> OtherApps
 
-    REMOTE_DEVICE --> WIFI_CLIENT
-    WIFI_CLIENT -->|Teleport VPN| UGW
-    UGW -->|Permitted home-network access| FW
+    subgraph Backup["Backup and recovery"]
+        BackupJob["Scheduled Restic backup"]
+        EncryptedRepo["Encrypted external repository<br/>3 snapshots after the recorded<br/>2 November retention run"]
+        RestoreTest["Isolated PostgreSQL restore test"]
 
-    %% WSL and Docker
-    UBUNTU -.->|Uses the same Docker daemon| DOCKER
+        BackupJob --> EncryptedRepo
+        EncryptedRepo --> RestoreTest
+    end
 
-    %% Caddy upstreams observed in configuration
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Historical Caddy upstream and port mapping omitted
-    %% Immich dependencies
-    IMMICH --> PG
-    IMMICH --> ML
-    IMMICH --> VALKEY
+    Windows --> BackupJob
+    ImmichData -. "Database dump and application data" .-> BackupJob
 
-    %% Persistent storage
-    %% Historical host-mount relationship omitted
-    %% Historical host-mount relationship omitted
-    VOLUMES -.->|Model cache| ML
-    VOLUMES -.->|Application data| WEBUI
-    VOLUMES -.->|Caddy state| CADDY
+    classDef infrastructure fill:#e8eef7,stroke:#506784,color:#172b4d
+    classDef application fill:#e8f3ec,stroke:#4d8062,color:#173c25
+    classDef backup fill:#fff2d8,stroke:#a77b2e,color:#513b10
+    classDef remote fill:#f0e9f7,stroke:#80649b,color:#352347
 
-    %% Backup history
-    IMMICH -->|VSS-backed Restic backup| RESTIC
-    RESTIC --> SNAPSHOT
-    RESTIC --> DAILY
-
-    %% Pi-hole and Unbound
-    PI -.->|Configured public DNS upstreams| PUBLIC_DNS["Public DNS"]
-    PI --- UNBOUND_NOTE["Unbound runs separately and is not configured as Pi-hole upstream"]
-
-    classDef pending stroke-dasharray: 5 5;
-    class OTHER pending;
+    class Gateway,Windows,DockerDesktop,DockerEngine,WSL infrastructure
+    class Caddy,Immich,ImmichData,OtherApps,DNS application
+    class BackupJob,EncryptedRepo,RestoreTest backup
+    class RemoteDevice,Twingate,Teleport remote

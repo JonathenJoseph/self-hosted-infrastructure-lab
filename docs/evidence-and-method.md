@@ -1,256 +1,141 @@
-# Evidence and Method
 
-**Last updated:** 2 November 2026
+
+# Evidence and Method
 
 ## 1. Purpose
 
-This document describes how infrastructure findings are collected, interpreted and recorded.
+This document explains how technical claims in the portfolio are classified and how test results should be interpreted.
 
-The portfolio separates direct technical evidence from operator confirmation and assumptions.
+The objective is to avoid presenting assumptions as facts or describing an untested feature as working.
 
-The purpose is to make the documentation reproducible and prevent untested assumptions from being presented as established facts.
+## 2. Evidence labels
 
-## 2. Evidence classifications
+The following labels are used throughout the portfolio.
 
-| Classification | Meaning |
+| Label | Meaning |
 |---|---|
-| Verified | Directly supported by command output, configuration inspection or successful test result |
-| User-confirmed | Explicitly confirmed by the infrastructure operator |
-| Inferred | Reasonable conclusion based on available evidence, but not demonstrated directly |
-| Open | Further investigation or validation is required |
-| Deferred | Intentionally outside the current investigation scope |
+| **OBSERVED** | Directly seen in a configuration, command output, application interface or system record during an environment review. |
+| **OPERATOR-REPORTED** | Supplied by the system operator as a result or observation. It has not necessarily been independently repeated during documentation preparation. |
+| **TESTED** | A test was carried out and a result was recorded. The test conditions and limitations should be stated. |
+| **INFERRED** | A conclusion drawn from available evidence but not directly confirmed. |
+| **NOT TESTED** | The relevant functionality has not been demonstrated. |
 
-## 3. Evidence collection methods
+A single activity may have more than one evidence classification. For example, an operator may report a successful test and provide its output, while the documentation author has not re-executed it.
 
-| Area | Evidence gathered |
-|---|---|
-| Windows host | Windows build, system information, CPU, memory and storage |
-| WSL | WSL version, kernel and distribution status |
-| Docker | `docker version`, `docker ps -a`, `docker inspect`, `docker stats` |
-| Docker networking | `docker network ls` and `docker network inspect` |
-| Docker storage | `docker volume ls`, `docker volume inspect`, `docker system df -v` |
-| Compose | `docker compose ls` and `docker compose config` |
-| Caddy | Caddyfile, site snippets, `caddy validate` and container logs |
-| Firewall | Windows firewall profile, rule, port and application inspection |
-| Storage | Directory sizes, container mounts and volume inspection |
-| Database dumps | Gzip integrity checks and file metadata |
-| Restic repository | Repository initialisation, snapshot listing, `restic check`, `restic find` and `restic restore` |
-| Backup automation | PowerShell dry runs, script logs and Task Scheduler status |
-| Storage incident | Disk and NTFS Windows event logs, `chkdsk D: /scan` and exposed device telemetry |
-| PostgreSQL recovery | Isolated container import and database inspection |
-| Remote access | Operator confirmation of Twingate access to any service on the home network |
+## 3. Evidence sources
 
-## 4. Initial Restic backup evidence
+The portfolio draws on:
 
-The initial full backup output reported:
+- Windows system information and event records.
+- Docker and container configuration observations.
+- Network and reverse-proxy configuration.
+- Restic command output and snapshot records.
+- Windows Task Scheduler information.
+- Database restore results.
+- SHA-256 file hash comparisons.
+- PostgreSQL import and query results.
+- Operator-provided descriptions of the environment.
 
-- Repository opened successfully.
-- VSS snapshot of `C:\` created successfully.
-- 48,335 files processed.
-- 30,960 directories processed.
-- 197.721 GiB scanned.
-- 136.272 GiB added to the repository.
-- 135.725 GiB stored.
-- Duration of 3 hours, 47 minutes and 13 seconds.
-- Snapshot `7ec7a616` saved.
-- Exit code `0`.
+Private logs, credentials, configuration secrets and raw backup data are not included in the public repository.
 
-This establishes that an initial Restic snapshot was successfully saved.
+## 4. Backup evidence
 
-## 5. Subsequent snapshot evidence
+The backup results recorded for 1–2 November 2026 include:
 
-A second snapshot was created:
+- An initial full Restic snapshot.
+- Subsequent daily snapshots.
+- A successful scheduled backup on 2 November.
+- Successful execution of the configured retention operation.
+- Three snapshots remaining after the recorded retention run.
+- A full data-pack read of 9,221 out of 9,221 packs with no reported errors.
 
-| Snapshot | Time | Tags |
-|---|---|---|
-| `7ec7a616` | 1 November 2026, 18:47:33 | `immich`, `initial-full` |
-| `e8d1bd6a` | 1 November 2026, 23:52:05 | `immich`, `daily` |
+These are historical operator-confirmed results. They should not be interpreted as live repository status.
 
-A subsequent `restic snapshots` listing confirmed both snapshots and their six source paths.
+## 5. Database recovery evidence
 
-## 6. Repository integrity evidence
+The database recovery test included:
 
-The command:
+1. Restoring a database dump from a Restic snapshot.
+2. Comparing the original and restored dump using SHA-256.
+3. Confirming that the hashes matched.
+4. Importing the restored dump into an isolated PostgreSQL test container.
+5. Confirming database import success.
+6. Removing the temporary test environment.
 
-```powershell
-restic check
-```
+The test container used a dedicated temporary volume, no published host ports and no network connectivity.
 
-reported:
+The live database was not used as the restore target.
 
-```text
-25 / 25 index files loaded
-2 / 2 snapshots
-no errors were found
-```
+The result supports a successful database dump restore and import under the recorded conditions.
 
-Restic also reported 475 additional files, likely containing duplicate or unreferenced data.
+It does not establish full Immich application recovery.
 
-The check did not include `--read-data`, so the portfolio does not claim that every repository data pack has been fully read and verified.
+## 6. Storage incident evidence
 
-## 7. File restoration evidence
+The earlier backup failure was investigated using Windows system events and a later filesystem scan.
 
-The database dump:
+The investigation recorded storage-related Windows events during the failed backup attempt.
 
-`immich-db-backup-20261101T171904-v3.3.5-pg14.19.sql.gz`
+A later filesystem scan found no filesystem problems and no bad sectors. Subsequent backup attempts succeeded.
 
-was located in snapshot `e8d1bd6a` and restored to a separate test directory.
+The original physical cause was not identified.
 
-The original and restored files both measured 97,168,037 bytes.
+The portfolio therefore describes the incident as an unresolved storage-related failure rather than a confirmed disk hardware fault.
 
-PowerShell returned identical SHA-256 results:
+## 7. Limitations
 
-```text
-0DB89A7CA4DB0474B0051590CE3D3112600EFA2C653120D926192FE77137FF2A
-```
+The evidence has several limitations:
 
-The comparison returned:
+- Historical output does not prove current service state.
+- A successful snapshot does not prove every file can be restored into a working application.
+- A successful data-pack read does not explain every repository metadata observation.
+- A successful PostgreSQL import does not prove application-level recovery.
+- A configured network route does not establish end-to-end connectivity.
+- A published container port does not prove public internet exposure.
+- A read-only review is not a penetration test.
+- Custom secret-pattern checks are not equivalent to a dedicated full-history secret scanner.
 
-```text
-Identical : True
-```
+## 8. Reproducibility
 
-This supports the claim that the recovered database dump was byte-for-byte identical to the original.
+Where safe and appropriate, test procedures should be reproducible without exposing private infrastructure details.
 
-## 8. PostgreSQL recovery evidence
+Examples include:
 
-The restored dump was imported into a temporary isolated PostgreSQL container using the same image as the live Immich database.
+- Restic integrity checks against a controlled repository.
+- Hash comparisons of original and restored files.
+- Database imports into isolated test instances.
+- Mermaid diagram validation.
+- Markdown link checks.
 
-The test environment used:
+Any future test should record:
 
-- PostgreSQL 14.
-- Database name `immich_db`.
-- Database user `immich`.
-- A dedicated Docker volume.
-- Network mode `none`.
-- No published ports.
-- A temporary generated password.
+- Date and time.
+- Software version.
+- Relevant test conditions.
+- Expected result.
+- Actual result.
+- Exit code or error output, where applicable.
+- Any limitations.
 
-The import completed with exit code `0`.
+## 9. Reporting standard
 
-The subsequent inspection query returned:
+Portfolio claims should be specific and bounded.
 
-```text
-immich_db|72|1
-```
+Prefer:
 
-This confirmed:
+> The database dump was restored and imported successfully into an isolated PostgreSQL test environment.
 
-- Database name: `immich_db`.
-- Base tables: 72.
-- Application schemas: 1.
+Avoid:
 
-The restored database reported the following extensions:
+> The entire application has been fully recovered.
 
-```text
-cube
-earthdistance
-pg_trgm
-plpgsql
-unaccent
-uuid-ossp
-vchord
-vector
-```
+Prefer:
 
-The temporary container and volume were removed after testing.
+> The full Restic data-pack read completed with no reported errors.
 
-The live Immich database was not modified.
+Avoid:
 
-## 9. Backup automation evidence
+> The backup system is guaranteed to recover everything.
 
-The daily Restic script is stored at:
+The purpose of evidence-led documentation is to show exactly what was demonstrated, not to imply more than the tests support.
 
-`Restic-Immich\Backup-Immich.ps1`
-
-The Windows Task Scheduler task is:
-
-`Immich Daily Restic Backup`
-
-The configured trigger is daily at 05:00.
-
-The task was previously observed with:
-
-- State `Ready`.
-- Last task result `0`.
-- Next run `2 November 2026, 05:00`.
-- No missed runs.
-
-Those observations refer to the earlier task execution and script version.
-
-The latest script introduced a strict current-day database dump requirement. A dry run at 00:11 on 2 November stopped because the most recent database dump was still dated 1 November.
-
-This confirms the freshness check prevented a backup from proceeding with a previous-day database dump.
-
-The first successful scheduled execution of the latest script remains unverified.
-
-## 10. Retention evidence
-
-A Restic retention preview used:
-
-```powershell
-restic forget `
-    --tag immich `
-    --keep-daily 7 `
-    --keep-weekly 4 `
-    --keep-monthly 12 `
-    --keep-tag initial-full `
-    --dry-run
-```
-
-The preview preserved both existing snapshots.
-
-The retention command was subsequently run without `--dry-run`. A later snapshot listing confirmed that both existing snapshots remained present.
-
-The updated daily script contains the retention policy after successful backup verification.
-
-Automatic pruning is not enabled.
-
-## 11. Remote access evidence
-
-The operator confirmed that Twingate allows access to any service on the home network.
-
-The Twingate Connector was observed using Docker host networking.
-
-UniFi Teleport is documented as a separate remote VPN option through WiFiman.
-
-The documentation treats the Twingate capability as user-confirmed configuration information rather than an independently captured off-site network test.
-
-## 12. Important limitations
-
-- All observations are point-in-time and may change as the infrastructure is updated.
-- The initial backup and PostgreSQL restore were successfully tested, but a complete Immich application recovery was not performed.
-- The normal Restic repository check did not read every repository data pack.
-- The earlier external storage interruption remains unexplained.
-- The first successful scheduled execution using the latest backup script has not been confirmed.
-- The long-term behaviour of the external drive has not been established.
-- Published Docker ports do not, on their own, prove internet exposure.
-- Docker network membership does not prove application-level communication.
-- A healthy container status does not necessarily prove end-to-end application health.
-- The portfolio does not contain credentials, API keys, private certificate material or raw database dumps.
-
-## 13. Reproducibility and documentation maintenance
-
-When refreshing the audit:
-
-1. Capture timestamped command output.
-2. Record the command and the purpose of each test.
-3. Redact credentials, hostnames and sensitive paths.
-4. Separate observed configuration from operator confirmation.
-5. Record failures as well as successful outcomes.
-6. Keep raw private evidence outside the public portfolio.
-7. Update the snapshot date when refreshing point-in-time results.
-
-## 14. Change history
-
-| Date | Change |
-|---|---|
-| 1 November 2026 | Initial infrastructure documentation baseline |
-| 1 November 2026 | Initial successful Restic snapshot `7ec7a616` |
-| 1 November 2026 | Subsequent snapshot `e8d1bd6a` |
-| 1 November 2026 | Repository structural check completed |
-| 1 November 2026 | Database dump restored and SHA-256 comparison passed |
-| 1 November 2026 | Isolated PostgreSQL database import and inspection passed |
-| 1 November 2026 | Manual retention policy applied |
-| 2 November 2026 | Updated backup automation and retention documentation |
-| 2 November 2026 | Twingate remote-access description updated following operator confirmation |

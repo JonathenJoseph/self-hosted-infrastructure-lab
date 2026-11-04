@@ -1,177 +1,125 @@
-# Networking and Routing
 
-**Last updated:** 2 November 2026
 
-## 1. Network architecture
+# Networking
 
-The home network uses UniFi networking equipment for local DNS, hostname resolution and LAN routing.
+## 1. Purpose
 
-Docker Desktop runs the hosted applications on the Windows 11 host.
+This document explains the main networking responsibilities in the self-hosted environment.
 
-Caddy provides application-level HTTP and HTTPS routing.
+The public version focuses on architecture and service roles. It deliberately omits private IP addresses, internal hostnames, detailed firewall exceptions, exact service ports and private remote-access configuration.
 
-Remote access is provided through two independent options:
+## 2. Network architecture
 
-- Twingate.
-- UniFi Teleport VPN through WiFiman.
+The environment uses a UniFi gateway for local network services and routing, with Caddy providing application-level reverse proxying.
 
-## 2. UniFi local DNS and hostname resolution
+These are separate responsibilities.
 
-The UniFi Gateway manages local DNS records and hostname resolution.
+| Component | Responsibility |
+|---|---|
+| UniFi gateway | Local DNS records and LAN routing |
+| Caddy | HTTP/HTTPS reverse proxy and application routing |
+| Docker networking | Communication between containerised services |
+| Twingate | Remote access to services across the home network |
+| UniFi Teleport | Independent remote VPN option |
 
-A home-network client asks the gateway to resolve a configured local hostname. The gateway returns the configured address, which points to the relevant host LAN address in this web-service architecture.
+## 3. DNS and LAN routing
 
-This allows local clients to use meaningful hostnames rather than memorising IP addresses and ports.
+The UniFi gateway handles local DNS records and LAN routing.
 
-The gateway also handles LAN routing.
+This provides local name resolution and network-level communication between devices and services.
 
-The actual internal hostnames, IP addresses and local domain are deliberately omitted from this repository.
+DNS resolution does not itself provide application-level HTTP or HTTPS routing.
 
-## 3. Caddy reverse proxy
+## 4. Reverse proxying
 
-Caddy receives HTTP and HTTPS requests on the Windows host's published TCP ports 80 and 443.
+Caddy handles application-level reverse proxying.
 
-It then selects a configured upstream based on the requested site.
+It receives HTTP/HTTPS requests and routes them to configured application upstreams.
 
-The functional request path is:
+This provides a consistent application access layer and separates application routing from gateway DNS responsibilities.
 
-1. Client requests a local hostname.
-2. UniFi resolves the hostname.
-3. Client connects to the host address.
-4. Caddy receives the HTTP/HTTPS request.
-5. Caddy forwards the request to the application.
+A configured Caddy route is not proof that the upstream is available. Individual upstream connectivity should be tested from the relevant network context.
 
-UniFi DNS and Caddy have separate responsibilities. UniFi resolves names; Caddy selects the application endpoint.
+## 5. Docker networking
 
-## 4. Remote access
+The container environment uses multiple Docker networks to organise application and supporting services.
+
+The public documentation intentionally describes service relationships at a logical level rather than publishing exact network names or every container membership.
+
+Some services communicate within application groups, while others rely on host-level connectivity or separate network arrangements.
+
+A diagram of the simplified service relationships is available in [Docker network topology](../diagrams/docker-network-topology.mmd).
+
+## 6. DNS services
+
+Pi-hole provides DNS filtering.
+
+Unbound is also present as a separate DNS service.
+
+In the configuration reviewed, Pi-hole used public DNS resolvers as its upstream services. Unbound was not configured as Pi-hole's upstream in that observed arrangement.
+
+The presence of both services should not be interpreted as proof that DNS traffic passes through both in sequence.
+
+## 7. Remote access
 
 ### Twingate
 
-The Twingate Connector provides remote-access connectivity; historical container network mode is omitted.
+Twingate is configured to provide access to services across the home network.
 
-The operator has confirmed that Twingate allows access to any service on the home network.
+It is not documented as being restricted to services exposed through Caddy.
 
-This is recorded as user-confirmed configuration information.
+The public portfolio does not disclose connector credentials, resource identifiers or detailed access policy configuration.
 
-It is not restricted in this documentation to Caddy-hosted applications or a small list of web services.
+### UniFi Teleport
 
-Twingate's credentials, tokens and private configuration are excluded from this repository.
+UniFi Teleport, accessed through WiFiman, provides a separate remote VPN option.
 
-### UniFi Teleport VPN
+It is independent of the Twingate setup.
 
-UniFi Teleport is a separate remote-access VPN option through the WiFiman client.
+The two remote-access methods are alternatives and do not need to be used together.
 
-A remote device connects to the UniFi Gateway through Teleport. Access then follows the gateway's configured network policies.
+## 8. Host port exposure
 
-Teleport and Twingate are independent remote-access options. They do not need to be active together.
+Some container services were observed publishing ports on all host interfaces.
 
-Official references:
+This is an important configuration detail, but it does not prove that a service is accessible from the public internet.
 
-- [UniFi DNS Records and Local Hostnames](https://help.ui.com/hc/en-us/articles/15179064940439-UniFi-DNS-Records-and-Local-Hostnames)
-- [UniFi Gateway - Teleport VPN](https://help.ui.com/hc/en-us/articles/5246403561495-UniFi-Gateway-Teleport-VPN)
-- [Using WiFiman](https://help.ui.com/hc/en-us/articles/205204150-Using-WiFiman)
+Actual reachability depends on multiple layers, including:
 
-## 5. Docker networks
+- Host firewall rules.
+- Gateway and routing configuration.
+- Network segmentation.
+- Any upstream filtering.
+- The service's own access controls.
 
-The captured Docker network inventory includes nine networks:
+The public portfolio therefore does not publish detailed host-port mappings or claim that a particular service is publicly exposed without direct evidence.
 
-- `[DOCKER_NETWORK_3]`
-- `bridge`
-- `[DOCKER_NETWORK_1]`
-- `[DOCKER_NETWORK_4]`
-- `host`
-- `[DOCKER_NETWORK_2]`
-- `none`
-- `[DOCKER_NETWORK_5]`
-- `vems_default`
+## 9. Validation boundaries
 
-Observed memberships:
+The networking review distinguishes between:
 
-| Network | Containers observed |
-|---|---|
-| `[DOCKER_NETWORK_1]` | Caddy, Apprenticeship Tracker web, Home Assistant and Jellyfin |
-| `[DOCKER_NETWORK_2]` | Caddy, Immich server, PostgreSQL, machine learning, Valkey and Homepage |
-| `[DOCKER_NETWORK_3]` | Apprenticeship Tracker web and API |
-| `[DOCKER_NETWORK_4]` | Homepage |
-| `bridge` | Home Assistant, SearXNG, Jellyfin, Open WebUI and Pi-hole |
-| `[DOCKER_NETWORK_5]` | Unbound |
-| `vems_default` | VEMS |
-| `host` | Twingate Connector |
+- A configured DNS record.
+- A configured proxy route.
+- A container's network membership.
+- A successful connection test.
+- Verified access from a particular network location.
 
-The `host` and `none` entries are Docker network modes and special networks rather than ordinary application networks.
+These are different levels of evidence.
 
-A container may belong to multiple Docker networks. Membership indicates potential network connectivity, not confirmed application traffic.
+For example, the presence of a Caddy upstream in configuration does not establish that the application is healthy or reachable from every client network.
 
-## 6. Caddy route inventory
+## 10. Security and privacy
 
-Nine site snippets were observed.
+The public repository intentionally excludes:
 
-| Site snippet | Configured upstream | Observation |
-|---|---|---|
-| [REVERSE-PROXY ROUTE] | [UPSTREAM DETAILS REDACTED] | [LOCAL NETWORK/PORT DETAILS OMITTED] | [HISTORICAL NOTE OMITTED] |
-| [REVERSE-PROXY ROUTE] | [UPSTREAM DETAILS REDACTED] | [LOCAL NETWORK/PORT DETAILS OMITTED] | [HISTORICAL NOTE OMITTED] |
-| [REVERSE-PROXY ROUTE] | [UPSTREAM DETAILS REDACTED] | [LOCAL NETWORK/PORT DETAILS OMITTED] | [HISTORICAL NOTE OMITTED] |
-| [REVERSE-PROXY ROUTE] | [UPSTREAM DETAILS REDACTED] | [LOCAL NETWORK/PORT DETAILS OMITTED] | [HISTORICAL NOTE OMITTED] |
-| [REVERSE-PROXY ROUTE] | [UPSTREAM DETAILS REDACTED] | [LOCAL NETWORK/PORT DETAILS OMITTED] | [HISTORICAL NOTE OMITTED] |
-| [REVERSE-PROXY ROUTE] | [UPSTREAM DETAILS REDACTED] | [LOCAL NETWORK/PORT DETAILS OMITTED] | [HISTORICAL NOTE OMITTED] |
-| [REVERSE-PROXY ROUTE] | [UPSTREAM DETAILS REDACTED] | [LOCAL NETWORK/PORT DETAILS OMITTED] | [HISTORICAL NOTE OMITTED] |
-| [REVERSE-PROXY ROUTE] | [UPSTREAM DETAILS REDACTED] | [LOCAL NETWORK/PORT DETAILS OMITTED] | [HISTORICAL NOTE OMITTED] |
-| [REVERSE-PROXY ROUTE] | [UPSTREAM DETAILS REDACTED] | [LOCAL NETWORK/PORT DETAILS OMITTED] | [HISTORICAL NOTE OMITTED] |
+- Private IPv4 addressing.
+- Internal DNS zones and hostnames.
+- Wi-Fi identifiers and credentials.
+- MAC addresses.
+- Exact firewall exceptions.
+- Detailed remote-access resources.
+- Connector tokens and private certificates.
+- Exact host-port mappings where they are not necessary to explain the design.
 
-Caddy configuration validation passed.
+The aim is to demonstrate understanding of network responsibilities and architecture without publishing an unnecessary map of the home network.
 
-The Kali route remained unresolved because no matching Windows listener or published container port was identified during the earlier audit.
-
-The Ollama route label does not establish that the upstream is the Ollama API. The captured port belongs to Open WebUI.
-
-## 7. Published host ports
-
-The captured Docker inventory showed the following host bindings:
-
-| Service | Host port | Container port | Protocol |
-|---|---:|---:|---|
-| Caddy | 80, 443 | 80, 443 | TCP |
-| Immich | 2283 | 2283 | TCP |
-| Apprenticeship Tracker API | 4000 | 4000 | TCP |
-| Home Assistant | 8123 | 8123 | TCP |
-| SearXNG | 8080 | 8080 | TCP |
-| Jellyfin | 8096 | 8096 | TCP |
-| Homepage | 3001 | 3000 | TCP |
-| Vert | 3005 | 80 | TCP |
-| Open WebUI | 3000 | 8080 | TCP |
-| Pi-hole DNS | 15353 | 53 | TCP and UDP |
-| Pi-hole web interface | 8081 | 80 | TCP |
-| Unbound | 5335 | 53 | UDP |
-
-A Docker binding on all host interfaces does not by itself prove internet exposure. Windows Firewall, router policy, network segmentation, VPN configuration and NAT also influence reachability.
-
-## 8. DNS architecture finding
-
-Pi-hole was observed using these configured upstream DNS servers:
-
-- `8.8.8.8`
-- `8.8.4.4`
-
-Unbound was running separately on `[DOCKER_NETWORK_5]`.
-
-Pi-hole was attached to the default `bridge` network rather than `[DOCKER_NETWORK_5]`, and its configured upstreams bypassed the Unbound container.
-
-This may be intentional, but the intended DNS design has not been confirmed.
-
-## 9. Networking risks and actions
-
-| Finding | Implication | Action |
-|---|---|---|
-| Multiple host-published ports | Broad listening scope | Confirm intended exposure of each service |
-| Pi-hole and Unbound separation | Unbound not used by Pi-hole | Confirm intended DNS architecture |
-| Unresolved Kali upstream | Potential broken route | Identify intended target or remove route |
-| Open WebUI labelled as Ollama | Potentially misleading route | Confirm whether the route name is intentional |
-| Pi-hole has no persistent mounts | State may be lost on container recreation | Export configuration and plan persistent storage |
-
-## Related diagrams and documents
-
-- [Current Architecture](architecture-overview.md)
-- [Current Architecture Mermaid Source](../diagrams/current-architecture.mmd)
-- [Docker Network Topology](../diagrams/docker-network-topology.mmd)
-- [Container Inventory](container-inventory.md)
-- [Security Baseline](security-baseline.md)
